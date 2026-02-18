@@ -44,6 +44,8 @@ export {
   type MarketOracleVote,
   type MarketSelfAttestation,
   type MarketChallenge,
+  type MarketCurveState,
+  type MarketLiquidityModel,
   type MarketResolution,
   type MarketStatus,
   type OracleVoteInput,

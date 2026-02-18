@@ -1,6 +1,12 @@
 // ── Market types ──
 
 export type MarketStatus = "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED";
+export type MarketLiquidityModel = "CLOB" | "WEIGHTED_CURVE";
+
+export interface MarketCurveState {
+  liquidityParameterHbar: number;
+  sharesByOutcome: Record<string, number>;
+}
 
 export interface MarketSelfAttestation {
   proposedOutcome: string;
@@ -43,7 +49,10 @@ export interface Market {
   createdAt: string;
   status: MarketStatus;
   outcomes: string[];
+  liquidityModel?: MarketLiquidityModel;
   initialOddsByOutcome?: Record<string, number>;
+  currentOddsByOutcome?: Record<string, number>;
+  curveState?: MarketCurveState;
   outcomeTokenIds: Record<string, string>;
   outcomeTokenUrls: Record<string, string>;
   resolvedOutcome?: string;
@@ -61,6 +70,8 @@ export interface MarketBet {
   bettorAccountId: string;
   outcome: string;
   amountHbar: number;
+  curveSharesPurchased?: number;
+  effectiveOdds?: number;
   placedAt: string;
   escrowTransactionId?: string;
   escrowTransactionUrl?: string;
@@ -185,6 +196,7 @@ export interface ClawdbotNetworkStatus {
   openMarkets: number;
   oracleMinReputationScore: number;
   oracleMinVoters: number;
+  oracleQuorumPercent?: number;
   trustedResolverCount: number;
   demoScriptRunning?: boolean;
   lastDemoRunId?: string;

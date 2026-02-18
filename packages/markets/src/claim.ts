@@ -7,6 +7,7 @@ import { getMarketStore, persistMarketStore, type MarketStore } from "./store.js
 import { type ClaimRecord, type ClaimWinningsInput, MarketError } from "./types.js";
 
 const TINYBARS_PER_HBAR = 100_000_000n;
+const SHARE_SCALE = 1_000_000n;
 
 interface ClaimDependencies {
   transferHbar: typeof transferHbar;
@@ -25,6 +26,10 @@ function toTinybars(amountHbar: number): bigint {
 
 function fromTinybars(tinybars: bigint): number {
   return Number(tinybars) / Number(TINYBARS_PER_HBAR);
+}
+
+function toScaledShares(value: number): bigint {
+  return BigInt(Math.round(value * Number(SHARE_SCALE)));
 }
 
 function asMarketError(message: string, error: unknown): MarketError {
@@ -68,16 +73,18 @@ export async function claimWinnings(
   let totalPool = 0n;
   let winningPool = 0n;
   let accountWinningStake = 0n;
+  const useCurveShares = market.liquidityModel === "WEIGHTED_CURVE";
 
   for (const bet of bets) {
     const stake = toTinybars(bet.amountHbar);
     totalPool += stake;
 
     if (bet.outcome === market.resolvedOutcome) {
-      winningPool += stake;
+      const winningStake = useCurveShares ? toScaledShares(bet.curveSharesPurchased ?? bet.amountHbar) : stake;
+      winningPool += winningStake;
 
       if (bet.bettorAccountId === input.accountId) {
-        accountWinningStake += stake;
+        accountWinningStake += winningStake;
       }
     }
   }

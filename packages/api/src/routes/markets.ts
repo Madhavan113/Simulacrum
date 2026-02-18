@@ -21,8 +21,11 @@ import type { ApiEventBus } from "../events.js";
 import { validateBody } from "../middleware/validation.js";
 import {
   applyOracleVoteReputation,
+  applySelfAttestationReputation,
   challengeFlowEnabled,
   deduplicateVotes,
+  estimateOracleParticipantCount,
+  resolveOracleQuorumPolicy,
   type OracleVoteLog
 } from "./market-helpers.js";
 
@@ -33,7 +36,10 @@ const createMarketSchema = z.object({
   closeTime: z.string().min(1),
   escrowAccountId: z.string().optional(),
   outcomes: z.array(z.string().min(1)).optional(),
-  initialOddsByOutcome: z.record(z.number().positive()).optional()
+  initialOddsByOutcome: z.record(z.number().positive()).optional(),
+  lowLiquidity: z.boolean().optional(),
+  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE"]).optional(),
+  curveLiquidityHbar: z.number().positive().optional()
 });
 
 const placeBetSchema = z.object({
@@ -236,9 +242,14 @@ export function createMarketsRouter(eventBus: ApiEventBus): Router {
 
       try {
         const store = getMarketStore();
+        const market = store.markets.get(request.params.marketId);
         const priorVotes = [
-          ...((store.markets.get(request.params.marketId)?.oracleVotes ?? []) as OracleVoteLog[])
+          ...((market?.oracleVotes ?? []) as OracleVoteLog[])
         ];
+        const bettorAccountIds = (store.bets.get(request.params.marketId) ?? []).map((bet) => bet.bettorAccountId);
+        const quorumPolicy = resolveOracleQuorumPolicy(
+          estimateOracleParticipantCount(market, bettorAccountIds)
+        );
 
         const reputationLookup = (accountId: string): number => {
           const repStore = getReputationStore();
@@ -251,7 +262,7 @@ export function createMarketsRouter(eventBus: ApiEventBus): Router {
             marketId: request.params.marketId,
             ...request.body
           },
-          { reputationLookup }
+          { reputationLookup, ...quorumPolicy }
         );
         eventBus.publish("market.oracle_vote", result.vote);
         if (result.finalized) {
@@ -265,6 +276,15 @@ export function createMarketsRouter(eventBus: ApiEventBus): Router {
           );
           for (const attestation of reputations) {
             eventBus.publish("reputation.attested", attestation);
+          }
+          const selfAttestationPenalty = await applySelfAttestationReputation(
+            request.params.marketId,
+            result.finalized.resolvedOutcome,
+            result.finalized.resolvedByAccountId,
+            store.markets.get(request.params.marketId)?.selfAttestation
+          );
+          if (selfAttestationPenalty) {
+            eventBus.publish("reputation.attested", selfAttestationPenalty);
           }
         }
         response.status(201).json(result);

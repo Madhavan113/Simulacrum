@@ -25,8 +25,11 @@ import { createAgentAuthMiddleware } from "../middleware/agent-auth.js";
 import { validateBody } from "../middleware/validation.js";
 import {
   applyOracleVoteReputation,
+  applySelfAttestationReputation,
   challengeFlowEnabled,
   deduplicateVotes,
+  estimateOracleParticipantCount,
+  resolveOracleQuorumPolicy,
   type OracleVoteLog
 } from "./market-helpers.js";
 
@@ -51,7 +54,10 @@ const createMarketSchema = z.object({
   description: z.string().optional(),
   closeTime: z.string().min(1),
   outcomes: z.array(z.string().min(1)).optional(),
-  initialOddsByOutcome: z.record(z.number().positive()).optional()
+  initialOddsByOutcome: z.record(z.number().positive()).optional(),
+  lowLiquidity: z.boolean().optional(),
+  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE"]).optional(),
+  curveLiquidityHbar: z.number().positive().optional()
 });
 
 const placeBetSchema = z.object({
@@ -284,7 +290,10 @@ export function createAgentV1Router(options: CreateAgentV1RouterOptions): Router
           escrowAccountId: context.walletAccountId,
           closeTime: request.body.closeTime,
           outcomes: request.body.outcomes,
-          initialOddsByOutcome: request.body.initialOddsByOutcome
+          initialOddsByOutcome: request.body.initialOddsByOutcome,
+          lowLiquidity: request.body.lowLiquidity,
+          liquidityModel: request.body.liquidityModel,
+          curveLiquidityHbar: request.body.curveLiquidityHbar
         },
         { client: options.authService.getClientForAgent(context.agentId) }
       );
@@ -454,9 +463,16 @@ export function createAgentV1Router(options: CreateAgentV1RouterOptions): Router
 
     try {
       const store = getMarketStore();
+      const market = store.markets.get(request.params.marketId);
       const priorVotes = [
-        ...((store.markets.get(request.params.marketId)?.oracleVotes ?? []) as OracleVoteLog[])
+        ...((market?.oracleVotes ?? []) as OracleVoteLog[])
       ];
+      const registeredActiveAgents = options.authService
+        .listAgents()
+        .filter((agent) => agent.status === "ACTIVE").length;
+      const bettorAccountIds = (store.bets.get(request.params.marketId) ?? []).map((bet) => bet.bettorAccountId);
+      const estimatedParticipants = estimateOracleParticipantCount(market, bettorAccountIds);
+      const quorumPolicy = resolveOracleQuorumPolicy(Math.max(registeredActiveAgents, estimatedParticipants));
       const reputationLookup = (accountId: string): number => {
         const repStore = getReputationStore();
         const score = calculateReputationScore(accountId, repStore.attestations);
@@ -473,7 +489,8 @@ export function createAgentV1Router(options: CreateAgentV1RouterOptions): Router
         },
         {
           client: options.authService.getClientForAgent(context.agentId),
-          reputationLookup
+          reputationLookup,
+          ...quorumPolicy
         }
       );
       options.eventBus.publish("market.oracle_vote", result.vote);
@@ -489,6 +506,15 @@ export function createAgentV1Router(options: CreateAgentV1RouterOptions): Router
         );
         for (const attestation of reputations) {
           options.eventBus.publish("reputation.attested", attestation);
+        }
+        const selfAttestationPenalty = await applySelfAttestationReputation(
+          request.params.marketId,
+          result.finalized.resolvedOutcome,
+          result.finalized.resolvedByAccountId,
+          store.markets.get(request.params.marketId)?.selfAttestation
+        );
+        if (selfAttestationPenalty) {
+          options.eventBus.publish("reputation.attested", selfAttestationPenalty);
         }
       }
 

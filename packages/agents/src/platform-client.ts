@@ -126,7 +126,9 @@ export interface Market {
   createdAt: string;
   status: "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED";
   outcomes: string[];
+  liquidityModel?: "CLOB" | "WEIGHTED_CURVE";
   initialOddsByOutcome?: Record<string, number>;
+  currentOddsByOutcome?: Record<string, number>;
 }
 
 export interface CreateMarketInput {
@@ -135,6 +137,9 @@ export interface CreateMarketInput {
   closeTime: string;
   outcomes?: string[];
   initialOddsByOutcome?: Record<string, number>;
+  lowLiquidity?: boolean;
+  liquidityModel?: "CLOB" | "WEIGHTED_CURVE";
+  curveLiquidityHbar?: number;
 }
 
 export interface PlaceBetInput {

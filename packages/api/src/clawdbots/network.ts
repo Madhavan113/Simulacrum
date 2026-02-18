@@ -32,7 +32,7 @@ import {
 } from "@simulacrum/markets";
 import { getReputationStore, submitAttestation } from "@simulacrum/reputation";
 
-import type { ApiEventBus } from "../events.js";
+import type { ApiEvent, ApiEventBus } from "../events.js";
 import type { AgentRegistry } from "../routes/agents.js";
 import {
   EncryptedBotCredentialStore,
@@ -62,6 +62,7 @@ export interface ClawdbotNetworkOptions {
   threadRetention?: number;
   oracleMinReputationScore?: number;
   oracleMinVoters?: number;
+  oracleQuorumPercent?: number;
   llm?: LlmProviderConfig;
   hostedMode?: boolean;
   minActionIntervalMs?: number;
@@ -81,6 +82,9 @@ export interface CreateClawdbotEventMarketInput {
   prompt?: string;
   outcomes?: string[];
   initialOddsByOutcome?: Record<string, number>;
+  lowLiquidity?: boolean;
+  liquidityModel?: "CLOB" | "WEIGHTED_CURVE";
+  curveLiquidityHbar?: number;
   creatorBotId?: string;
   closeMinutes?: number;
 }
@@ -96,6 +100,7 @@ export interface ClawdbotNetworkStatus {
   openMarkets: number;
   oracleMinReputationScore: number;
   oracleMinVoters: number;
+  oracleQuorumPercent: number;
   trustedResolverCount: number;
   hostedMode?: boolean;
   activeHostedBots?: number;
@@ -220,8 +225,10 @@ interface MarketSentiment {
 const DEFAULT_TICK_MS = 15_000;
 const DEFAULT_ORACLE_MIN_REPUTATION_SCORE = 65;
 const DEFAULT_ORACLE_MIN_VOTERS = 2;
-const ORACLE_VOTE_SCORE_DELTA_CORRECT = 6;
-const ORACLE_VOTE_SCORE_DELTA_INCORRECT = -4;
+const DEFAULT_ORACLE_QUORUM_PERCENT = 0.6;
+const ORACLE_VOTE_SCORE_DELTA_CORRECT = 5;
+const ORACLE_VOTE_SCORE_DELTA_INCORRECT = -5;
+const INCORRECT_SELF_ATTESTATION_SCORE_DELTA = -8;
 
 function normalizeNetwork(value: string | undefined): HederaNetwork {
   const candidate = (value ?? "testnet").toLowerCase();
@@ -268,6 +275,14 @@ function parsePositiveNumber(value: unknown, fallback: number): number {
   }
 
   return fallback;
+}
+
+function parseUnitInterval(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return clamp(value, 0, 1);
+  }
+
+  return clamp(fallback, 0, 1);
 }
 
 function parseOutcomes(value: unknown): string[] | undefined {
@@ -400,6 +415,7 @@ export class ClawdbotNetwork {
   readonly #threadRetention: number;
   readonly #oracleMinReputationScore: number;
   readonly #oracleMinVoters: number;
+  readonly #oracleQuorumPercent: number;
   readonly #llmConfig: LlmProviderConfig;
   readonly #cognition: LlmCognitionEngine;
   readonly #hostedMode: boolean;
@@ -418,6 +434,8 @@ export class ClawdbotNetwork {
   readonly #thread: ClawdbotMessage[] = [];
   readonly #goalsByBotId = new Map<string, ClawdbotGoal>();
   readonly #hostedControl = new Map<string, HostedBotControl>();
+  #eventSubscription: (() => void) | null = null;
+  readonly #activeDisputeBroadcasts = new Set<string>();
 
   #interval: ReturnType<typeof setInterval> | null = null;
   #running = false;
@@ -460,6 +478,11 @@ export class ClawdbotNetwork {
           DEFAULT_ORACLE_MIN_VOTERS
         )
       )
+    );
+    this.#oracleQuorumPercent = parseUnitInterval(
+      options.oracleQuorumPercent ??
+        Number(process.env.CLAWDBOT_ORACLE_QUORUM_PERCENT ?? process.env.MARKET_ORACLE_QUORUM_PERCENT),
+      DEFAULT_ORACLE_QUORUM_PERCENT
     );
     this.#llmConfig = {
       provider: options.llm?.provider ?? "openai",
@@ -522,6 +545,7 @@ export class ClawdbotNetwork {
       openMarkets,
       oracleMinReputationScore: this.#oracleMinReputationScore,
       oracleMinVoters: this.#oracleMinVoters,
+      oracleQuorumPercent: this.#oracleQuorumPercent,
       trustedResolverCount,
       hostedMode: this.#hostedMode,
       activeHostedBots,
@@ -995,6 +1019,12 @@ export class ClawdbotNetwork {
 
         let ordersPlaced = 0;
         let betsPlaced = 0;
+        const orderCoverage: Record<`${"YES" | "NO"}_${"BID" | "ASK"}`, number> = {
+          YES_BID: 0,
+          YES_ASK: 0,
+          NO_BID: 0,
+          NO_ASK: 0
+        };
         const placeDemoOrder = async (
           runtime: RuntimeBot,
           marketId: string,
@@ -1072,27 +1102,75 @@ export class ClawdbotNetwork {
             const runtime = participants[index];
             const targetMarketId =
               round < 6 || index % 2 === 0 ? liquidityMarket.marketId : lifecycleMarket.marketId;
-            const pickYes = (round + index) % 2 === 0;
-            const outcome: "YES" | "NO" = pickYes ? "YES" : "NO";
-            const side: "BID" | "ASK" = (round + index) % 3 === 0 ? "ASK" : "BID";
-            const basePrice = pickYes ? 0.56 + (round % 4) * 0.04 : 0.44 - (round % 4) * 0.04;
-            const drift = index * 0.01 * (side === "BID" ? 1 : -1);
+            const marketBias = round < 6 ? 0.03 : -0.02;
+            const baseYesPrice = clamp(
+              0.5 + marketBias + ((round % 5) - 2) * 0.045 + (index - participants.length / 2) * 0.012,
+              0.12,
+              0.88
+            );
+            const baseNoPrice = 1 - baseYesPrice;
+            const spread = clamp(0.05 + ((round + index) % 3) * 0.015, 0.04, 0.12);
+            const baseQuantity = 6 + ((round * 5 + index * 3) % 12);
 
-            await placeDemoOrder(
+            const quotes: Array<{
+              outcome: "YES" | "NO";
+              side: "BID" | "ASK";
+              quantity: number;
+              price: number;
+            }> = [
+              {
+                outcome: "YES",
+                side: "BID",
+                quantity: baseQuantity + 2,
+                price: baseYesPrice - spread / 2
+              },
+              {
+                outcome: "YES",
+                side: "ASK",
+                quantity: baseQuantity + 1,
+                price: baseYesPrice + spread / 2
+              },
+              {
+                outcome: "NO",
+                side: "BID",
+                quantity: baseQuantity + 1,
+                price: baseNoPrice - spread / 2
+              },
+              {
+                outcome: "NO",
+                side: "ASK",
+                quantity: baseQuantity + 2,
+                price: baseNoPrice + spread / 2
+              }
+            ];
+
+            for (const quote of quotes) {
+              await placeDemoOrder(
+                runtime,
+                targetMarketId,
+                quote.outcome,
+                quote.side,
+                quote.quantity,
+                quote.price
+              );
+              orderCoverage[`${quote.outcome}_${quote.side}`] += 1;
+            }
+
+            const primaryBetOutcome: "YES" | "NO" = (round + index) % 2 === 0 ? "YES" : "NO";
+            await placeDemoBet(
               runtime,
               targetMarketId,
-              outcome,
-              side,
-              8 + ((round * 3 + index * 5) % 18),
-              basePrice + drift
+              primaryBetOutcome,
+              1.0 + ((round + index) % 3) * 0.65
             );
 
-            if ((round + index) % 2 === 0) {
+            if ((round + index) % 3 === 0) {
+              const hedgeOutcome: "YES" | "NO" = primaryBetOutcome === "YES" ? "NO" : "YES";
               await placeDemoBet(
                 runtime,
                 targetMarketId,
-                outcome,
-                1.1 + ((round + index) % 4) * 0.75
+                hedgeOutcome,
+                1.0 + ((round + index) % 2) * 0.45
               );
             }
           }
@@ -1101,7 +1179,7 @@ export class ClawdbotNetwork {
         }
 
         this.postMessage(
-          `[DEMO][MCP] seeded ${ordersPlaced} orders and ${betsPlaced} bets across liquidity + lifecycle markets`,
+          `[DEMO][MCP] seeded ${ordersPlaced} orders + ${betsPlaced} bets (YES/BID=${orderCoverage.YES_BID}, YES/ASK=${orderCoverage.YES_ASK}, NO/BID=${orderCoverage.NO_BID}, NO/ASK=${orderCoverage.NO_ASK}) across liquidity + lifecycle markets`,
           trader.agent.id
         );
 
@@ -1156,7 +1234,12 @@ export class ClawdbotNetwork {
 
         await this.pause(240);
 
-        const votingPool = participants.slice(0, Math.max(2, Math.min(4, participants.length)));
+        const votingPool = participants
+          .filter((runtime) => {
+            const marketSnapshot = getMarketStore().markets.get(lifecycleMarket.marketId);
+            return !this.isIneligibleOracleVoter(marketSnapshot, runtime.wallet.accountId);
+          })
+          .slice(0, Math.max(2, Math.min(4, participants.length)));
         let finalized:
           | {
               marketId: string;
@@ -1177,7 +1260,12 @@ export class ClawdbotNetwork {
               reason: "[DEMO][MCP] oracle vote from a simulated tool-capable agent",
               reputationScore: runtime.agent.reputationScore
             },
-            { client: this.getClient(runtime.wallet) }
+            {
+              client: this.getClient(runtime.wallet),
+              oracleMinVotes: this.#oracleMinVoters,
+              oracleEligibleVoterCount: participants.length,
+              oracleQuorumPercent: this.#oracleQuorumPercent
+            }
           );
 
           this.#eventBus.publish("market.oracle_vote", {
@@ -1209,6 +1297,12 @@ export class ClawdbotNetwork {
               {
                 attesterAccountId: vote.finalized.resolvedByAccountId
               }
+            );
+            await this.applySelfAttestationReputation(
+              lifecycleMarket.marketId,
+              vote.finalized.resolvedOutcome,
+              getMarketStore().markets.get(lifecycleMarket.marketId)?.selfAttestation,
+              { attesterAccountId: vote.finalized.resolvedByAccountId }
             );
             this.#eventBus.publish("clawdbot.market.resolved", {
               marketId: lifecycleMarket.marketId,
@@ -1300,6 +1394,11 @@ export class ClawdbotNetwork {
     this.#interval = setInterval(() => {
       void this.runTick();
     }, this.#tickMs);
+    if (!this.#eventSubscription) {
+      this.#eventSubscription = this.#eventBus.subscribe((event) => {
+        this.handleEvent(event);
+      });
+    }
     this.#running = true;
     this.#eventBus.publish("clawdbot.started", this.getStatus());
   }
@@ -1312,6 +1411,10 @@ export class ClawdbotNetwork {
     if (this.#interval) {
       clearInterval(this.#interval);
       this.#interval = null;
+    }
+    if (this.#eventSubscription) {
+      this.#eventSubscription();
+      this.#eventSubscription = null;
     }
 
     this.#running = false;
@@ -1361,6 +1464,265 @@ export class ClawdbotNetwork {
     }
   }
 
+  private handleEvent(event: ApiEvent): void {
+    if (!this.#running) {
+      return;
+    }
+
+    if (event.type === "market.challenged") {
+      const payload =
+        event.payload && typeof event.payload === "object"
+          ? (event.payload as { demo?: unknown; source?: unknown })
+          : null;
+      if (payload?.demo === true || payload?.source === "demo-script") {
+        return;
+      }
+
+      const challenge = this.parseChallengePayload(event.payload);
+
+      if (!challenge) {
+        return;
+      }
+
+      void this.broadcastDisputeVotes(challenge.marketId, challenge.proposedOutcome, "market.challenged");
+      return;
+    }
+
+    if (event.type === "clawdbot.market.challenged") {
+      const payload =
+        event.payload && typeof event.payload === "object"
+          ? (event.payload as { marketId?: unknown; challenge?: unknown; demo?: unknown; source?: unknown })
+          : null;
+      if (payload?.demo === true || payload?.source === "demo-script") {
+        return;
+      }
+      const challenge = this.parseChallengePayload(payload?.challenge);
+      const marketId = parseNonEmptyString(payload?.marketId, challenge?.marketId ?? "");
+
+      if (!marketId) {
+        return;
+      }
+
+      void this.broadcastDisputeVotes(marketId, challenge?.proposedOutcome, "clawdbot.market.challenged");
+    }
+  }
+
+  private parseChallengePayload(
+    payload: unknown
+  ): { marketId: string; proposedOutcome: string | undefined } | null {
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+
+    const challenge = payload as { marketId?: unknown; proposedOutcome?: unknown };
+    const marketId = parseNonEmptyString(challenge.marketId, "");
+
+    if (!marketId) {
+      return null;
+    }
+
+    const proposedOutcome = parseNonEmptyString(challenge.proposedOutcome, "");
+    return {
+      marketId,
+      proposedOutcome: proposedOutcome || undefined
+    };
+  }
+
+  private isIneligibleOracleVoter(
+    market:
+      | {
+          creatorAccountId: string;
+          selfAttestation?: { attestedByAccountId: string };
+          challenges?: Array<{ challengerAccountId: string }>;
+        }
+      | undefined,
+    accountId: string
+  ): boolean {
+    if (!market) {
+      return false;
+    }
+
+    const normalized = accountId.trim();
+
+    if (!normalized) {
+      return true;
+    }
+    if (market.creatorAccountId.trim() === normalized) {
+      return true;
+    }
+    if (market.selfAttestation?.attestedByAccountId.trim() === normalized) {
+      return true;
+    }
+
+    return (market.challenges ?? []).some(
+      (challenge) => challenge.challengerAccountId.trim() === normalized
+    );
+  }
+
+  private async broadcastDisputeVotes(
+    marketId: string,
+    preferredOutcome: string | undefined,
+    source: "market.challenged" | "clawdbot.market.challenged"
+  ): Promise<void> {
+    if (!this.#running || this.#activeDisputeBroadcasts.has(marketId)) {
+      return;
+    }
+
+    this.#activeDisputeBroadcasts.add(marketId);
+
+    try {
+      await this.ensureBotPopulation();
+      const store = getMarketStore();
+      const market = store.markets.get(marketId);
+
+      if (!market || market.status === "RESOLVED" || !market.selfAttestation) {
+        return;
+      }
+
+      const reputationByAccount = this.buildReputationMap();
+      const candidates = Array.from(this.#runtimeBots.values()).filter((runtime) => {
+        if (this.isIneligibleOracleVoter(market, runtime.wallet.accountId)) {
+          return false;
+        }
+
+        const control = this.#hostedControl.get(runtime.agent.id);
+        if (!control) {
+          return true;
+        }
+
+        return control.active && !control.suspended;
+      });
+      const targetVotes = candidates.length;
+
+      this.#eventBus.publish("clawdbot.market.dispute_broadcast", {
+        marketId,
+        source,
+        targetVotes
+      });
+
+      for (const runtime of candidates) {
+        const snapshot = getMarketStore().markets.get(marketId);
+
+        if (!snapshot || snapshot.status === "RESOLVED" || !snapshot.selfAttestation) {
+          break;
+        }
+
+        const alreadyVoted = (snapshot.oracleVotes ?? []).some(
+          (vote) => vote.voterAccountId.trim() === runtime.wallet.accountId
+        );
+
+        if (alreadyVoted) {
+          continue;
+        }
+
+        const bettorBets = (getMarketStore().bets.get(marketId) ?? []).filter(
+          (bet) => bet.bettorAccountId === runtime.wallet.accountId
+        );
+        const ownTotals: Record<string, number> = {};
+
+        for (const bet of bettorBets) {
+          ownTotals[bet.outcome] = (ownTotals[bet.outcome] ?? 0) + bet.amountHbar;
+        }
+
+        const voteOutcome =
+          Object.entries(ownTotals).sort((left, right) => right[1] - left[1])[0]?.[0] ??
+          preferredOutcome ??
+          snapshot.selfAttestation.proposedOutcome ??
+          snapshot.outcomes[0] ??
+          "YES";
+        const reputationScore = reputationByAccount[runtime.wallet.accountId] ?? runtime.agent.reputationScore;
+        const confidence = clamp(0.4 + reputationScore / 200, 0.3, 0.95);
+
+        let vote: Awaited<ReturnType<typeof submitOracleVote>>;
+        try {
+          vote = await submitOracleVote(
+            {
+              marketId,
+              voterAccountId: runtime.wallet.accountId,
+              outcome: voteOutcome,
+              confidence,
+              reason: `Community dispute vote broadcast from ${source}`,
+              reputationScore
+            },
+            {
+              client: this.getClient(runtime.wallet),
+              oracleMinVotes: this.#oracleMinVoters,
+              oracleEligibleVoterCount: candidates.length,
+              oracleQuorumPercent: this.#oracleQuorumPercent,
+              reputationLookup: (accountId) => reputationByAccount[accountId] ?? 0
+            }
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+
+          if (/already submitted an oracle vote/i.test(message)) {
+            continue;
+          }
+          if (/already resolved/i.test(message)) {
+            break;
+          }
+
+          this.#eventBus.publish("clawdbot.market.oracle_vote_error", {
+            marketId,
+            botId: runtime.agent.id,
+            source: "dispute-broadcast",
+            error: message
+          });
+          continue;
+        }
+
+        this.#eventBus.publish("clawdbot.market.oracle_vote", {
+          marketId,
+          vote: vote.vote,
+          botId: runtime.agent.id,
+          source: "dispute-broadcast"
+        });
+
+        if (!vote.finalized) {
+          continue;
+        }
+
+        const finalVotes = (getMarketStore().markets.get(marketId)?.oracleVotes ?? []) as Array<{
+          id: string;
+          voterAccountId: string;
+          outcome: string;
+          confidence: number;
+        }>;
+        const uniqueVotes = Array.from(
+          finalVotes.reduce((map, entry) => {
+            map.set(entry.voterAccountId.trim(), entry);
+            return map;
+          }, new Map<string, (typeof finalVotes)[number]>()).values()
+        );
+
+        await this.applyOracleVoteReputation(marketId, vote.finalized.resolvedOutcome, uniqueVotes, {
+          attesterAccountId: vote.finalized.resolvedByAccountId
+        });
+        await this.applySelfAttestationReputation(
+          marketId,
+          vote.finalized.resolvedOutcome,
+          getMarketStore().markets.get(marketId)?.selfAttestation,
+          { attesterAccountId: vote.finalized.resolvedByAccountId }
+        );
+        this.#eventBus.publish("clawdbot.market.resolved", {
+          marketId,
+          resolvedOutcome: vote.finalized.resolvedOutcome,
+          resolverBotId: runtime.agent.id,
+          source: "dispute-broadcast"
+        });
+        break;
+      }
+    } catch (error) {
+      this.#eventBus.publish("clawdbot.market.dispute_broadcast_error", {
+        marketId,
+        source,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      this.#activeDisputeBroadcasts.delete(marketId);
+    }
+  }
+
   async createEventMarket(input: CreateClawdbotEventMarketInput): Promise<{ marketId: string }> {
     if (!this.#enabled) {
       throw new Error("Clawdbot network is disabled.");
@@ -1395,6 +1757,12 @@ export class ClawdbotNetwork {
       parseInitialOddsByOutcome(input.initialOddsByOutcome, resolvedOutcomes) ??
       defaultInitialOddsByOutcome(resolvedOutcomes, creator.agent.strategy.name);
     const closeMinutes = Math.max(5, Math.round(parsePositiveNumber(input.closeMinutes, this.#marketCloseMinutes)));
+    const lowLiquidity = input.lowLiquidity ?? input.liquidityModel === "WEIGHTED_CURVE";
+    const liquidityModel = lowLiquidity ? "WEIGHTED_CURVE" : "CLOB";
+    const curveLiquidityHbar =
+      typeof input.curveLiquidityHbar === "number" && Number.isFinite(input.curveLiquidityHbar) && input.curveLiquidityHbar > 0
+        ? input.curveLiquidityHbar
+        : undefined;
 
     const marketResult = await creator.adapter.handleToolCall({
       name: "create_market",
@@ -1402,7 +1770,10 @@ export class ClawdbotNetwork {
         question: prompt,
         outcomes,
         initialOddsByOutcome,
-        closeMinutes
+        closeMinutes,
+        lowLiquidity,
+        liquidityModel,
+        curveLiquidityHbar
       }
     });
 
@@ -1673,6 +2044,14 @@ export class ClawdbotNetwork {
           parseInitialOddsByOutcome(args.initialOddsByOutcome, resolvedOutcomes) ??
           defaultInitialOddsByOutcome(resolvedOutcomes, agent.strategy.name);
         const closeMinutes = Math.max(5, Math.round(parsePositiveNumber(args.closeMinutes, this.#marketCloseMinutes)));
+        const lowLiquidity = args.lowLiquidity === true || parseNonEmptyString(args.liquidityModel, "") === "WEIGHTED_CURVE";
+        const liquidityModel = lowLiquidity ? "WEIGHTED_CURVE" : "CLOB";
+        const curveLiquidityHbar =
+          typeof args.curveLiquidityHbar === "number" &&
+          Number.isFinite(args.curveLiquidityHbar) &&
+          args.curveLiquidityHbar > 0
+            ? args.curveLiquidityHbar
+            : undefined;
         const closeTime = new Date(Date.now() + closeMinutes * 60 * 1000).toISOString();
 
         const created = await createMarket(
@@ -1683,7 +2062,10 @@ export class ClawdbotNetwork {
             escrowAccountId: wallet.accountId,
             closeTime,
             outcomes,
-            initialOddsByOutcome
+            initialOddsByOutcome,
+            lowLiquidity,
+            liquidityModel,
+            curveLiquidityHbar
           },
           { client: this.getClient(wallet) }
         );
@@ -2170,8 +2552,21 @@ export class ClawdbotNetwork {
         }
 
         const trustedVoters = this.getTrustedResolverRuntimes(reputationByAccount);
-        const voterPool = trustedVoters.length > 0 ? trustedVoters : [resolver];
-        const maxVotes = Math.max(this.#oracleMinVoters, 2);
+        const voterPool = (trustedVoters.length > 0 ? trustedVoters : [resolver]).filter(
+          (runtime) => !this.isIneligibleOracleVoter(market, runtime.wallet.accountId)
+        );
+        if (voterPool.length === 0) {
+          this.#eventBus.publish("clawdbot.market.resolve_error", {
+            marketId: market.id,
+            error: "No eligible oracle voters available after excluding creator/challengers."
+          });
+          continue;
+        }
+        const maxVotes = Math.max(
+          this.#oracleMinVoters,
+          2,
+          Math.ceil(voterPool.length * this.#oracleQuorumPercent)
+        );
 
         for (const voter of voterPool.slice(0, maxVotes)) {
           const storeSnapshot = getMarketStore();
@@ -2203,7 +2598,13 @@ export class ClawdbotNetwork {
               reason: "Reputation-weighted peer oracle vote",
               reputationScore: reputationByAccount[voter.wallet.accountId] ?? voter.agent.reputationScore
             },
-            { client: this.getClient(voter.wallet) }
+            {
+              client: this.getClient(voter.wallet),
+              oracleMinVotes: this.#oracleMinVoters,
+              oracleEligibleVoterCount: voterPool.length,
+              oracleQuorumPercent: this.#oracleQuorumPercent,
+              reputationLookup: (accountId) => reputationByAccount[accountId] ?? 0
+            }
           );
 
           this.#eventBus.publish("clawdbot.market.oracle_vote", {
@@ -2215,13 +2616,19 @@ export class ClawdbotNetwork {
             const allVotes = [...priorVotes, voteResult.vote];
             const uniqueVotes = Array.from(
               allVotes.reduce((map, vote) => {
-                map.set(vote.id, vote);
+                map.set(vote.voterAccountId.trim(), vote);
                 return map;
               }, new Map<string, (typeof allVotes)[number]>()).values()
             );
             await this.applyOracleVoteReputation(market.id, voteResult.finalized.resolvedOutcome, uniqueVotes, {
               attesterAccountId: voteResult.finalized.resolvedByAccountId
             });
+            await this.applySelfAttestationReputation(
+              market.id,
+              voteResult.finalized.resolvedOutcome,
+              market.selfAttestation,
+              { attesterAccountId: voteResult.finalized.resolvedByAccountId }
+            );
             this.#eventBus.publish("clawdbot.market.resolved", {
               marketId: market.id,
               resolvedOutcome: voteResult.finalized.resolvedOutcome,
@@ -2276,6 +2683,43 @@ export class ClawdbotNetwork {
           error: error instanceof Error ? error.message : String(error)
         });
       }
+    }
+  }
+
+  private async applySelfAttestationReputation(
+    marketId: string,
+    resolvedOutcome: string,
+    selfAttestation:
+      | {
+          proposedOutcome?: string;
+          attestedByAccountId?: string;
+        }
+      | undefined,
+    options: { attesterAccountId: string }
+  ): Promise<void> {
+    const proposedOutcome = parseNonEmptyString(selfAttestation?.proposedOutcome, "");
+    const attestedByAccountId = parseNonEmptyString(selfAttestation?.attestedByAccountId, "");
+
+    if (!proposedOutcome || !attestedByAccountId || proposedOutcome === resolvedOutcome) {
+      return;
+    }
+
+    try {
+      const attestation = await submitAttestation({
+        subjectAccountId: attestedByAccountId,
+        attesterAccountId: options.attesterAccountId,
+        scoreDelta: INCORRECT_SELF_ATTESTATION_SCORE_DELTA,
+        confidence: 1,
+        reason: `Self-attested outcome (${proposedOutcome}) was overturned by final resolution (${resolvedOutcome}) for market ${marketId}`,
+        tags: ["market-self-attestation", "attestation-incorrect", `market:${marketId}`]
+      });
+      this.#eventBus.publish("reputation.attested", attestation);
+    } catch (error) {
+      this.#eventBus.publish("clawdbot.reputation.error", {
+        marketId,
+        voterAccountId: attestedByAccountId,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 

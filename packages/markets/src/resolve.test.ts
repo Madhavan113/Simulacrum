@@ -27,12 +27,69 @@ function seedDisputedMarket(): Market {
       attestedAt: "2026-02-18T00:05:00.000Z"
     },
     challengeWindowEndsAt: "2099-01-01T00:00:00.000Z",
-    challenges: [],
+    challenges: [
+      {
+        id: "challenge-1",
+        marketId: "0.0.7001",
+        challengerAccountId: "0.0.9002",
+        proposedOutcome: "NO",
+        reason: "Challenge for oracle adjudication",
+        createdAt: "2026-02-18T00:05:30.000Z"
+      }
+    ],
     oracleVotes: []
   };
 }
 
 describe("submitOracleVote", () => {
+  it("rejects creator and challenger accounts from oracle voting", async () => {
+    const store = createMarketStore();
+    store.markets.set("0.0.7001", seedDisputedMarket());
+    const submitMessageMock = vi.fn();
+
+    await expect(
+      submitOracleVote(
+        {
+          marketId: "0.0.7001",
+          voterAccountId: "0.0.1001",
+          outcome: "YES",
+          confidence: 0.9,
+          reputationScore: 12
+        },
+        {
+          store,
+          oracleMinVotes: 3,
+          deps: {
+            submitMessage: submitMessageMock,
+            now: () => new Date("2026-02-18T00:06:00.000Z")
+          }
+        }
+      )
+    ).rejects.toThrow(/ineligible for oracle voting/);
+
+    await expect(
+      submitOracleVote(
+        {
+          marketId: "0.0.7001",
+          voterAccountId: "0.0.9002",
+          outcome: "NO",
+          confidence: 0.9,
+          reputationScore: 12
+        },
+        {
+          store,
+          oracleMinVotes: 3,
+          deps: {
+            submitMessage: submitMessageMock,
+            now: () => new Date("2026-02-18T00:06:30.000Z")
+          }
+        }
+      )
+    ).rejects.toThrow(/ineligible for oracle voting/);
+
+    expect(submitMessageMock).not.toHaveBeenCalled();
+  });
+
   it("rejects duplicate votes from the same account", async () => {
     const store = createMarketStore();
     store.markets.set("0.0.7001", seedDisputedMarket());

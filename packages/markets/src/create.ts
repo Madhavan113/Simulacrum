@@ -2,7 +2,13 @@ import { createFungibleToken, createTopic, submitMessage, validateNonEmptyString
 import type { Client } from "@hashgraph/sdk";
 
 import { getMarketStore, persistMarketStore, type MarketStore } from "./store.js";
-import { type CreateMarketInput, type Market, MarketError } from "./types.js";
+import {
+  type CreateMarketInput,
+  type Market,
+  type MarketCurveState,
+  type MarketLiquidityModel,
+  MarketError
+} from "./types.js";
 
 interface CreateMarketDependencies {
   createTopic: typeof createTopic;
@@ -24,6 +30,7 @@ export interface CreateMarketResult {
 }
 
 const DEFAULT_OUTCOMES = ["YES", "NO"];
+const DEFAULT_CURVE_LIQUIDITY_HBAR = 25;
 
 function normalizeOutcomes(outcomes?: readonly string[]): string[] {
   const resolved = outcomes && outcomes.length > 0 ? outcomes : DEFAULT_OUTCOMES;
@@ -93,6 +100,105 @@ function normalizeInitialOddsByOutcome(
   return percentages;
 }
 
+function resolveLiquidityModel(input: CreateMarketInput): MarketLiquidityModel {
+  if (input.liquidityModel === "WEIGHTED_CURVE") {
+    return "WEIGHTED_CURVE";
+  }
+
+  if (input.lowLiquidity) {
+    return "WEIGHTED_CURVE";
+  }
+
+  return "CLOB";
+}
+
+function normalizeCurveLiquidityHbar(
+  value: number | undefined,
+  liquidityModel: MarketLiquidityModel
+): number | undefined {
+  if (liquidityModel !== "WEIGHTED_CURVE") {
+    return undefined;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Number(value.toFixed(6));
+  }
+
+  return DEFAULT_CURVE_LIQUIDITY_HBAR;
+}
+
+function fallbackOdds(outcomes: readonly string[]): Record<string, number> {
+  const share = Number((100 / outcomes.length).toFixed(2));
+  const resolved: Record<string, number> = {};
+  let running = 0;
+
+  for (let index = 0; index < outcomes.length; index += 1) {
+    const outcome = outcomes[index];
+
+    if (!outcome) {
+      continue;
+    }
+
+    if (index === outcomes.length - 1) {
+      resolved[outcome] = Number((100 - running).toFixed(2));
+      continue;
+    }
+
+    resolved[outcome] = share;
+    running += share;
+  }
+
+  return resolved;
+}
+
+function normalizeProbabilities(
+  oddsByOutcome: Record<string, number>,
+  outcomes: readonly string[]
+): Record<string, number> {
+  const probabilities: Record<string, number> = {};
+  let total = 0;
+
+  for (const outcome of outcomes) {
+    const raw = oddsByOutcome[outcome];
+    const probability = Number.isFinite(raw) && raw > 0 ? raw / 100 : 0;
+    probabilities[outcome] = probability;
+    total += probability;
+  }
+
+  if (total <= 0) {
+    const uniform = 1 / outcomes.length;
+    for (const outcome of outcomes) {
+      probabilities[outcome] = uniform;
+    }
+    return probabilities;
+  }
+
+  for (const outcome of outcomes) {
+    probabilities[outcome] = probabilities[outcome] / total;
+  }
+
+  return probabilities;
+}
+
+function initializeCurveState(
+  outcomes: readonly string[],
+  oddsByOutcome: Record<string, number>,
+  liquidityParameterHbar: number
+): MarketCurveState {
+  const probabilities = normalizeProbabilities(oddsByOutcome, outcomes);
+  const sharesByOutcome: Record<string, number> = {};
+
+  for (const outcome of outcomes) {
+    const probability = Math.max(0.0001, probabilities[outcome] ?? 0.0001);
+    sharesByOutcome[outcome] = Number((liquidityParameterHbar * Math.log(probability)).toFixed(8));
+  }
+
+  return {
+    liquidityParameterHbar,
+    sharesByOutcome
+  };
+}
+
 function assertCloseTime(closeTime: string): void {
   const timestamp = Date.parse(closeTime);
 
@@ -124,6 +230,13 @@ export async function createMarket(
 
   const outcomes = normalizeOutcomes(input.outcomes);
   const initialOddsByOutcome = normalizeInitialOddsByOutcome(input.initialOddsByOutcome, outcomes);
+  const liquidityModel = resolveLiquidityModel(input);
+  const curveLiquidityHbar = normalizeCurveLiquidityHbar(input.curveLiquidityHbar, liquidityModel);
+  const currentOddsByOutcome = initialOddsByOutcome ?? fallbackOdds(outcomes);
+  const curveState =
+    liquidityModel === "WEIGHTED_CURVE" && curveLiquidityHbar
+      ? initializeCurveState(outcomes, currentOddsByOutcome, curveLiquidityHbar)
+      : undefined;
   const store = getMarketStore(options.store);
   const deps: CreateMarketDependencies = {
     createTopic,
@@ -171,7 +284,10 @@ export async function createMarket(
       createdAt: nowIso,
       status: "OPEN",
       outcomes,
+      liquidityModel,
       initialOddsByOutcome,
+      currentOddsByOutcome,
+      curveState,
       outcomeTokenIds,
       outcomeTokenUrls,
       challenges: [],
@@ -188,7 +304,9 @@ export async function createMarket(
         marketId: market.id,
         question: market.question,
         outcomes,
+        liquidityModel,
         initialOddsByOutcome,
+        currentOddsByOutcome: market.currentOddsByOutcome,
         closeTime: market.closeTime,
         creatorAccountId: market.creatorAccountId,
         createdAt: market.createdAt

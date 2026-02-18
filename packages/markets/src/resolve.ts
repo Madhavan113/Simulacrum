@@ -28,6 +28,16 @@ export interface ResolveMarketOptions {
   deps?: Partial<ResolveMarketDependencies>;
   oracleMinVotes?: number;
   /**
+   * Number of eligible oracle voters for the current market.
+   * Used with `oracleQuorumPercent` to derive a participation quorum.
+   */
+  oracleEligibleVoterCount?: number;
+  /**
+   * Quorum ratio in [0, 1]. Effective required votes are:
+   * max(oracleMinVotes, ceil(oracleEligibleVoterCount * oracleQuorumPercent)).
+   */
+  oracleQuorumPercent?: number;
+  /**
    * Server-side reputation lookup. When provided, the caller-supplied
    * `reputationScore` on oracle votes is ignored and replaced with the
    * value returned by this function.
@@ -294,6 +304,26 @@ export async function submitOracleVote(
   }
 
   const voterAccountId = input.voterAccountId.trim();
+  const ineligibleVoters = new Set<string>();
+
+  if (market.creatorAccountId.trim()) {
+    ineligibleVoters.add(market.creatorAccountId.trim());
+  }
+  if (market.selfAttestation?.attestedByAccountId?.trim()) {
+    ineligibleVoters.add(market.selfAttestation.attestedByAccountId.trim());
+  }
+  for (const challenge of market.challenges ?? []) {
+    if (challenge.challengerAccountId.trim()) {
+      ineligibleVoters.add(challenge.challengerAccountId.trim());
+    }
+  }
+
+  if (ineligibleVoters.has(voterAccountId)) {
+    throw new MarketError(
+      `Account ${voterAccountId} is ineligible for oracle voting on market ${input.marketId} due to direct involvement.`
+    );
+  }
+
   const existingVote = (market.oracleVotes ?? []).find((entry) => entry.voterAccountId === voterAccountId);
 
   if (existingVote) {
@@ -342,10 +372,21 @@ export async function submitOracleVote(
     { client: options.client }
   );
 
-  const windowEnded = Date.now() >= Date.parse(market.challengeWindowEndsAt);
   const votes = market.oracleVotes ?? [];
-  const minVotes = options.oracleMinVotes ?? 2;
-  const shouldFinalize = windowEnded || votes.length >= minVotes;
+  const minVotes = Math.max(1, Math.round(options.oracleMinVotes ?? 2));
+  const eligibleVoterCount =
+    typeof options.oracleEligibleVoterCount === "number" &&
+    Number.isFinite(options.oracleEligibleVoterCount) &&
+    options.oracleEligibleVoterCount > 0
+      ? Math.max(1, Math.round(options.oracleEligibleVoterCount))
+      : undefined;
+  const quorumPercent =
+    typeof options.oracleQuorumPercent === "number" && Number.isFinite(options.oracleQuorumPercent)
+      ? Math.min(1, Math.max(0, options.oracleQuorumPercent))
+      : 0;
+  const quorumVotes = eligibleVoterCount ? Math.max(1, Math.ceil(eligibleVoterCount * quorumPercent)) : 0;
+  const requiredVotes = Math.max(minVotes, quorumVotes);
+  const shouldFinalize = votes.length >= requiredVotes;
 
   if (!shouldFinalize) {
     return { vote };

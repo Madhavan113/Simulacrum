@@ -98,6 +98,7 @@ export interface ApiClawdbotOptions
     | "threadRetention"
     | "oracleMinReputationScore"
     | "oracleMinVoters"
+    | "oracleQuorumPercent"
     | "hostedMode"
     | "minActionIntervalMs"
     | "maxActionsPerMinute"
