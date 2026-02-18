@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { marketsApi } from '../api/markets'
 
 export function useMarkets() {
@@ -19,6 +19,17 @@ export function useMarketBets(id: string) {
     queryFn: () => marketsApi.bets(id),
     enabled: Boolean(id),
     refetchInterval: 15_000,
+  })
+}
+
+export function useMarketBetsByIds(ids: readonly string[]) {
+  return useQueries({
+    queries: ids.map(id => ({
+      queryKey: ['market-bets', id],
+      queryFn: () => marketsApi.bets(id),
+      enabled: Boolean(id),
+      refetchInterval: 15_000,
+    })),
   })
 }
 

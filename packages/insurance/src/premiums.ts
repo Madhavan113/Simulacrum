@@ -1,3 +1,5 @@
+import { clamp, validateNonNegativeNumber, validatePositiveNumber } from "@simulacrum/core";
+
 import { InsuranceError } from "./types.js";
 
 export interface PremiumInputs {
@@ -14,21 +16,6 @@ export interface PremiumQuote {
   riskMultiplier: number;
 }
 
-function validatePositiveNumber(value: number, field: string): void {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new InsuranceError(`${field} must be a positive number.`);
-  }
-}
-
-function validateNonNegativeNumber(value: number, field: string): void {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new InsuranceError(`${field} must be a non-negative number.`);
-  }
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 export function calculatePremium(inputs: PremiumInputs): PremiumQuote {
   validatePositiveNumber(inputs.coverageAmountHbar, "coverageAmountHbar");

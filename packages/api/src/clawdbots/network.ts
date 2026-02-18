@@ -13,6 +13,7 @@ import {
 } from "@simulacrum/agents";
 import {
   EncryptedInMemoryKeyStore,
+  clamp,
   createAccount,
   createHederaClient,
   type HederaNetwork
@@ -221,8 +222,6 @@ const DEFAULT_ORACLE_MIN_REPUTATION_SCORE = 65;
 const DEFAULT_ORACLE_MIN_VOTERS = 2;
 const ORACLE_VOTE_SCORE_DELTA_CORRECT = 6;
 const ORACLE_VOTE_SCORE_DELTA_INCORRECT = -4;
-const BET_PARTICIPATION_SCORE_DELTA = 0.75;
-const BET_PARTICIPATION_CONFIDENCE = 0.2;
 
 function normalizeNetwork(value: string | undefined): HederaNetwork {
   const candidate = (value ?? "testnet").toLowerCase();
@@ -242,10 +241,6 @@ function normalizePrivateKeyType(value: string | undefined): AgentWallet["privat
   }
 
   return "auto";
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 function toMarketSnapshot(market: Market): MarketSnapshot {
@@ -2007,6 +2002,7 @@ export class ClawdbotNetwork {
               }
             });
             runtime.agent.adjustBankroll(-bootstrapStake);
+            runtime.agent.adjustReputation(0.75);
             this.#eventBus.publish("clawdbot.bet.placed", {
               botId: runtime.agent.id,
               marketId,
@@ -2014,7 +2010,6 @@ export class ClawdbotNetwork {
               amountHbar: bootstrapStake,
               rationale: "Bootstrap stake paired with posted orderbook liquidity."
             });
-            await this.applyBetParticipationReputation(marketId, runtime.wallet.accountId);
           } catch (error) {
             this.#eventBus.publish("clawdbot.bet.error", {
               botId: runtime.agent.id,
@@ -2031,6 +2026,10 @@ export class ClawdbotNetwork {
         if (!market) {
           return;
         }
+
+        const hadStakeBefore = (getMarketStore().bets.get(market.id) ?? []).some(
+          (bet) => bet.bettorAccountId === runtime.wallet.accountId
+        );
 
         const decision =
           action.outcome && action.amountHbar
@@ -2064,6 +2063,9 @@ export class ClawdbotNetwork {
           }
         });
         runtime.agent.adjustBankroll(-amountHbar);
+        if (!hadStakeBefore) {
+          runtime.agent.adjustReputation(0.75);
+        }
         this.#eventBus.publish("clawdbot.bet.placed", {
           botId: runtime.agent.id,
           marketId: market.id,
@@ -2071,7 +2073,6 @@ export class ClawdbotNetwork {
           amountHbar,
           rationale: decision.rationale
         });
-        await this.applyBetParticipationReputation(market.id, runtime.wallet.accountId);
         return;
       }
       case "RESOLVE_MARKET": {
@@ -2275,39 +2276,6 @@ export class ClawdbotNetwork {
           error: error instanceof Error ? error.message : String(error)
         });
       }
-    }
-  }
-
-  private hasBetParticipationAttestation(accountId: string, marketId: string): boolean {
-    const markerTag = `market-participation:${marketId}`;
-    const store = getReputationStore();
-    return store.attestations.some(
-      (attestation) =>
-        attestation.subjectAccountId === accountId && attestation.tags.includes(markerTag)
-    );
-  }
-
-  private async applyBetParticipationReputation(marketId: string, accountId: string): Promise<void> {
-    if (this.hasBetParticipationAttestation(accountId, marketId)) {
-      return;
-    }
-
-    try {
-      const attestation = await submitAttestation({
-        subjectAccountId: accountId,
-        attesterAccountId: "SYSTEM_BET_ACTIVITY",
-        scoreDelta: BET_PARTICIPATION_SCORE_DELTA,
-        confidence: BET_PARTICIPATION_CONFIDENCE,
-        reason: `Placed stake in market ${marketId}`,
-        tags: ["market-participation", `market:${marketId}`, `market-participation:${marketId}`]
-      });
-      this.#eventBus.publish("reputation.attested", attestation);
-    } catch (error) {
-      this.#eventBus.publish("clawdbot.reputation.error", {
-        marketId,
-        voterAccountId: accountId,
-        error: error instanceof Error ? error.message : String(error)
-      });
     }
   }
 

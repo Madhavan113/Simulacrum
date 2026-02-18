@@ -4,10 +4,12 @@ import { resetInsuranceStoreForTests } from "@simulacrum/insurance";
 import { resetMarketStoreForTests } from "@simulacrum/markets";
 import { resetReputationStoreForTests } from "@simulacrum/reputation";
 
+import { resetAgentPlatformStoreForTests } from "../agent-platform/store.js";
 import { isExecutedDirectly, logStep } from "./utils.js";
 
 export function resetAllBackendState(): void {
   resetHederaClientForTests();
+  resetAgentPlatformStoreForTests();
   resetMarketStoreForTests();
   resetReputationStoreForTests();
   resetInsuranceStoreForTests();

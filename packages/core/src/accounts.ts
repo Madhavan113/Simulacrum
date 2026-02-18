@@ -9,11 +9,16 @@ import {
 } from "@hashgraph/sdk";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
-import { getHederaClient, type HederaNetwork } from "./client.js";
-
-const HASHSCAN_BASE_URL = "https://hashscan.io";
-const DEFAULT_NETWORK: HederaNetwork = "testnet";
-const TINYBARS_PER_HBAR = 100_000_000n;
+import { type HederaNetwork } from "./client.js";
+import {
+  TINYBARS_PER_HBAR,
+  buildAccountUrl,
+  buildTransactionUrl,
+  resolveClient,
+  resolveNetwork,
+  toTinybars
+} from "./hedera-utils.js";
+import { validateNonEmptyString, validateNonNegativeNumber } from "./validation.js";
 
 interface EncryptedKeyEntry {
   iv: string;
@@ -115,20 +120,6 @@ export class EncryptedInMemoryKeyStore implements AccountKeyStore {
 
 let defaultKeyStore: AccountKeyStore | null = null;
 
-function resolveClient(client?: Client): Client {
-  return client ?? getHederaClient();
-}
-
-function resolveNetwork(client: Client): HederaNetwork {
-  const network = client.ledgerId?.toString().toLowerCase();
-
-  if (network === "mainnet" || network === "previewnet" || network === "testnet") {
-    return network;
-  }
-
-  return DEFAULT_NETWORK;
-}
-
 function resolveKeyStore(keyStore?: AccountKeyStore): AccountKeyStore {
   if (keyStore) {
     return keyStore;
@@ -150,32 +141,12 @@ function resolveKeyStore(keyStore?: AccountKeyStore): AccountKeyStore {
   return defaultKeyStore;
 }
 
-function buildTransactionUrl(network: HederaNetwork, transactionId: string): string {
-  return `${HASHSCAN_BASE_URL}/${network}/transaction/${encodeURIComponent(transactionId)}`;
-}
-
-function buildAccountUrl(network: HederaNetwork, accountId: string): string {
-  return `${HASHSCAN_BASE_URL}/${network}/account/${encodeURIComponent(accountId)}`;
-}
-
 function asHederaAccountError(message: string, error: unknown): HederaAccountError {
   if (error instanceof HederaAccountError) {
     return error;
   }
 
   return new HederaAccountError(message, error);
-}
-
-function validateNonEmptyString(value: string, fieldName: string): void {
-  if (value.trim().length === 0) {
-    throw new HederaAccountError(`${fieldName} must be a non-empty string.`);
-  }
-}
-
-function validateNonNegativeNumber(value: number, fieldName: string): void {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new HederaAccountError(`${fieldName} must be a non-negative number.`);
-  }
 }
 
 export async function createAccount(

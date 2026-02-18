@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import type { NextFunction, Request, Response } from "express";
 
 export interface AuthMiddlewareOptions {
@@ -37,7 +39,11 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions = {}) {
 
     const receivedApiKey = extractApiKey(request);
 
-    if (receivedApiKey !== configuredApiKey) {
+    if (
+      !receivedApiKey ||
+      receivedApiKey.length !== configuredApiKey.length ||
+      !timingSafeEqual(Buffer.from(receivedApiKey), Buffer.from(configuredApiKey))
+    ) {
       response.status(401).json({ error: "Unauthorized" });
       return;
     }

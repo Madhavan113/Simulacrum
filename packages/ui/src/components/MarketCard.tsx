@@ -1,4 +1,4 @@
-import type { Market, OrderBookSnapshot } from '../api/types'
+import type { Market } from '../api/types'
 import { computeImpliedOdds } from '../utils/odds'
 import { OddsBar } from './OddsBar'
 
@@ -8,10 +8,10 @@ interface MarketCardProps {
   volumeNorm?: number
   onClick?: () => void
   horizontal?: boolean
-  orderBook?: OrderBookSnapshot | null
+  stakeByOutcome?: Record<string, number>
 }
 
-export function MarketCard({ market, onClick, horizontal = false, orderBook }: MarketCardProps) {
+export function MarketCard({ market, onClick, horizontal = false, stakeByOutcome }: MarketCardProps) {
   const resolvesAt = new Date(market.closeTime)
   const msUntilResolution = resolvesAt.getTime() - Date.now()
   const resolutionLabel =
@@ -24,8 +24,8 @@ export function MarketCard({ market, onClick, horizontal = false, orderBook }: M
           : `resolves in ${Math.max(1, Math.round(msUntilResolution / (60 * 60 * 1000)))}h`
   const odds = computeImpliedOdds({
     outcomes: market.outcomes,
-    orderBook,
     initialOddsByOutcome: market.initialOddsByOutcome,
+    stakeByOutcome,
     resolvedOutcome: market.resolvedOutcome,
   })
 
@@ -33,6 +33,7 @@ export function MarketCard({ market, onClick, horizontal = false, orderBook }: M
     return (
       <button
         onClick={onClick}
+        aria-label={`Market: ${market.question}`}
         className="w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-raised border-b transition-colors"
         style={{ borderColor: 'var(--border)', background: 'transparent', cursor: 'pointer' }}
       >
@@ -54,6 +55,7 @@ export function MarketCard({ market, onClick, horizontal = false, orderBook }: M
   return (
     <button
       onClick={onClick}
+      aria-label={`Market: ${market.question}`}
       className="flex overflow-hidden text-left transition-colors"
       style={{
         background: 'var(--bg-surface)',

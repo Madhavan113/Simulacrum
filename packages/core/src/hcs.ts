@@ -7,10 +7,14 @@ import {
   TopicMessageSubmitTransaction
 } from "@hashgraph/sdk";
 
-import { getHederaClient, type HederaNetwork } from "./client.js";
-
-const HASHSCAN_BASE_URL = "https://hashscan.io";
-const DEFAULT_NETWORK: HederaNetwork = "testnet";
+import { type HederaNetwork } from "./client.js";
+import {
+  buildTopicUrl,
+  buildTransactionUrl,
+  resolveClient,
+  resolveNetwork
+} from "./hedera-utils.js";
+import { validateNonEmptyString, validateNonNegativeInteger, validatePositiveInteger } from "./validation.js";
 const DEFAULT_POLLING_INTERVAL_MS = 3_000;
 
 const MIRROR_NODE_BASE_URLS: Record<HederaNetwork, string> = {
@@ -95,20 +99,6 @@ export class HederaTopicError extends Error {
   }
 }
 
-function resolveClient(client?: Client): Client {
-  return client ?? getHederaClient();
-}
-
-function resolveNetwork(client: Client): HederaNetwork {
-  const network = client.ledgerId?.toString().toLowerCase();
-
-  if (network === "mainnet" || network === "previewnet" || network === "testnet") {
-    return network;
-  }
-
-  return DEFAULT_NETWORK;
-}
-
 function resolveMirrorNodeBaseUrl(client: Client, mirrorNodeBaseUrl?: string): string {
   if (mirrorNodeBaseUrl) {
     return mirrorNodeBaseUrl.replace(/\/$/, "");
@@ -117,13 +107,6 @@ function resolveMirrorNodeBaseUrl(client: Client, mirrorNodeBaseUrl?: string): s
   return MIRROR_NODE_BASE_URLS[resolveNetwork(client)];
 }
 
-function buildTransactionUrl(network: HederaNetwork, transactionId: string): string {
-  return `${HASHSCAN_BASE_URL}/${network}/transaction/${encodeURIComponent(transactionId)}`;
-}
-
-function buildTopicUrl(network: HederaNetwork, topicId: string): string {
-  return `${HASHSCAN_BASE_URL}/${network}/topic/${encodeURIComponent(topicId)}`;
-}
 
 function asHederaTopicError(message: string, error: unknown): HederaTopicError {
   if (error instanceof HederaTopicError) {
@@ -133,23 +116,6 @@ function asHederaTopicError(message: string, error: unknown): HederaTopicError {
   return new HederaTopicError(message, error);
 }
 
-function validateNonEmptyString(value: string, fieldName: string): void {
-  if (value.trim().length === 0) {
-    throw new HederaTopicError(`${fieldName} must be a non-empty string.`);
-  }
-}
-
-function validatePositiveInteger(value: number, fieldName: string): void {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new HederaTopicError(`${fieldName} must be a positive integer.`);
-  }
-}
-
-function validateNonNegativeInteger(value: number, fieldName: string): void {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new HederaTopicError(`${fieldName} must be a non-negative integer.`);
-  }
-}
 
 function parseSubmitKey(submitKey: string): PublicKey {
   try {

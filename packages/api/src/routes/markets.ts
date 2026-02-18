@@ -12,52 +12,19 @@ import {
   selfAttestMarket,
   submitOracleVote
 } from "@simulacrum/markets";
-import { submitAttestation, type ReputationAttestation } from "@simulacrum/reputation";
+import {
+  calculateReputationScore,
+  getReputationStore
+} from "@simulacrum/reputation";
 
 import type { ApiEventBus } from "../events.js";
 import { validateBody } from "../middleware/validation.js";
-
-function challengeFlowEnabled(): boolean {
-  return (process.env.MARKET_CHALLENGE_FLOW_ENABLED ?? "true").toLowerCase() !== "false";
-}
-
-const CORRECT_VOTE_SCORE_DELTA = 6;
-const INCORRECT_VOTE_SCORE_DELTA = -4;
-
-interface OracleVoteLog {
-  id: string;
-  marketId: string;
-  voterAccountId: string;
-  outcome: string;
-  confidence: number;
-}
-
-async function applyOracleVoteReputation(
-  marketId: string,
-  resolvedOutcome: string,
-  attesterAccountId: string,
-  votes: OracleVoteLog[]
-): Promise<ReputationAttestation[]> {
-  const attestations: ReputationAttestation[] = [];
-
-  for (const vote of votes) {
-    const isCorrect = vote.outcome === resolvedOutcome;
-    const scoreDelta = isCorrect ? CORRECT_VOTE_SCORE_DELTA : INCORRECT_VOTE_SCORE_DELTA;
-    const attestation = await submitAttestation({
-      subjectAccountId: vote.voterAccountId,
-      attesterAccountId,
-      scoreDelta,
-      confidence: vote.confidence,
-      reason: isCorrect
-        ? `Oracle vote matched final outcome (${resolvedOutcome}) for market ${marketId}`
-        : `Oracle vote diverged from final outcome (${resolvedOutcome}) for market ${marketId}`,
-      tags: ["oracle-vote", isCorrect ? "vote-correct" : "vote-incorrect", `market:${marketId}`]
-    });
-    attestations.push(attestation);
-  }
-
-  return attestations;
-}
+import {
+  applyOracleVoteReputation,
+  challengeFlowEnabled,
+  deduplicateVotes,
+  type OracleVoteLog
+} from "./market-helpers.js";
 
 const createMarketSchema = z.object({
   question: z.string().min(1),
@@ -272,20 +239,24 @@ export function createMarketsRouter(eventBus: ApiEventBus): Router {
         const priorVotes = [
           ...((store.markets.get(request.params.marketId)?.oracleVotes ?? []) as OracleVoteLog[])
         ];
-        const result = await submitOracleVote({
-          marketId: request.params.marketId,
-          ...request.body
-        });
+
+        const reputationLookup = (accountId: string): number => {
+          const repStore = getReputationStore();
+          const score = calculateReputationScore(accountId, repStore.attestations);
+          return score.score;
+        };
+
+        const result = await submitOracleVote(
+          {
+            marketId: request.params.marketId,
+            ...request.body
+          },
+          { reputationLookup }
+        );
         eventBus.publish("market.oracle_vote", result.vote);
         if (result.finalized) {
           eventBus.publish("market.resolved", result.finalized);
-          const allVotes = [...priorVotes, result.vote];
-          const uniqueVotes = Array.from(
-            allVotes.reduce((map, vote) => {
-              map.set(vote.id, vote);
-              return map;
-            }, new Map<string, OracleVoteLog>()).values()
-          );
+          const uniqueVotes = deduplicateVotes([...priorVotes, result.vote]);
           const reputations = await applyOracleVoteReputation(
             request.params.marketId,
             result.finalized.resolvedOutcome,

@@ -10,6 +10,7 @@ export function AgentCard({ agent, rank, onClick }: AgentCardProps) {
   return (
     <button
       onClick={onClick}
+      aria-label={`Agent: ${agent.name}`}
       className="relative overflow-hidden text-left transition-colors"
       style={{
         background: 'var(--bg-surface)',

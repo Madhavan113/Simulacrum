@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@simulacrum/core": "workspace:*",
     "@simulacrum/markets": "workspace:*",
     "@simulacrum/reputation": "workspace:*"
   },

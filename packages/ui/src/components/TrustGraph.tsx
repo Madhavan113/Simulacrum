@@ -24,6 +24,11 @@ export function TrustGraphViz({ graph, width = 320, height = 280 }: TrustGraphPr
     const svg = svgRef.current
     if (!svg || graph.nodes.length === 0) return
 
+    const styles = getComputedStyle(svg)
+    const colorAccent = styles.getPropertyValue('--accent').trim() || '#D4917A'
+    const colorBgRaised = styles.getPropertyValue('--bg-raised').trim() || '#1A1A1A'
+    const colorTextMuted = styles.getPropertyValue('--text-muted').trim() || '#6B6460'
+
     const el = d3.select(svg)
     el.selectAll('*').remove()
 
@@ -44,7 +49,7 @@ export function TrustGraphViz({ graph, width = 320, height = 280 }: TrustGraphPr
       .selectAll('line')
       .data(links)
       .join('line')
-      .attr('stroke', '#D4917A')
+      .attr('stroke', colorAccent)
       .attr('stroke-opacity', d => Math.min(0.8, 0.2 + Math.abs(d.weight) * 0.6))
       .attr('stroke-width', d => Math.max(0.5, Math.min(2, d.attestations * 0.4)))
 
@@ -53,8 +58,8 @@ export function TrustGraphViz({ graph, width = 320, height = 280 }: TrustGraphPr
       .data(nodes)
       .join('circle')
       .attr('r', 5)
-      .attr('fill', '#1A1A1A')
-      .attr('stroke', '#D4917A')
+      .attr('fill', colorBgRaised)
+      .attr('stroke', colorAccent)
       .attr('stroke-width', 1)
 
     const label = el.append('g')
@@ -64,7 +69,7 @@ export function TrustGraphViz({ graph, width = 320, height = 280 }: TrustGraphPr
       .text(d => d.id.slice(0, 8))
       .attr('font-size', 8)
       .attr('font-family', 'monospace')
-      .attr('fill', '#6B6460')
+      .attr('fill', colorTextMuted)
       .attr('text-anchor', 'middle')
       .attr('dy', -8)
 

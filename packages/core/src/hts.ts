@@ -10,10 +10,14 @@ import {
   TransferTransaction
 } from "@hashgraph/sdk";
 
-import { getHederaClient, type HederaNetwork } from "./client.js";
-
-const HASHSCAN_BASE_URL = "https://hashscan.io";
-const DEFAULT_NETWORK: HederaNetwork = "testnet";
+import { type HederaNetwork } from "./client.js";
+import {
+  buildTokenUrl,
+  buildTransactionUrl,
+  resolveClient,
+  resolveNetwork
+} from "./hedera-utils.js";
+import { validateNonEmptyString, validateNonNegativeInteger, validatePositiveInteger } from "./validation.js";
 
 export interface TokenOperationResult {
   tokenId: string;
@@ -38,28 +42,6 @@ export class HederaTokenError extends Error {
   }
 }
 
-function resolveClient(client?: Client): Client {
-  return client ?? getHederaClient();
-}
-
-function resolveNetwork(client: Client): HederaNetwork {
-  const network = client.ledgerId?.toString().toLowerCase();
-
-  if (network === "mainnet" || network === "previewnet" || network === "testnet") {
-    return network;
-  }
-
-  return DEFAULT_NETWORK;
-}
-
-function buildTransactionUrl(network: HederaNetwork, transactionId: string): string {
-  return `${HASHSCAN_BASE_URL}/${network}/transaction/${encodeURIComponent(transactionId)}`;
-}
-
-function buildTokenUrl(network: HederaNetwork, tokenId: string): string {
-  return `${HASHSCAN_BASE_URL}/${network}/token/${encodeURIComponent(tokenId)}`;
-}
-
 function toResult(client: Client, transactionId: string, tokenId: string): TokenOperationResult {
   const network = resolveNetwork(client);
 
@@ -79,23 +61,6 @@ function asHederaTokenError(message: string, error: unknown): HederaTokenError {
   return new HederaTokenError(message, error);
 }
 
-function validateNonEmptyString(value: string, fieldName: string): void {
-  if (value.trim().length === 0) {
-    throw new HederaTokenError(`${fieldName} must be a non-empty string.`);
-  }
-}
-
-function validateNonNegativeInteger(value: number, fieldName: string): void {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new HederaTokenError(`${fieldName} must be a non-negative integer.`);
-  }
-}
-
-function validatePositiveInteger(value: number, fieldName: string): void {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new HederaTokenError(`${fieldName} must be a positive integer.`);
-  }
-}
 
 function resolveTreasuryAccountId(client: Client, treasuryAccountId?: string): AccountId {
   if (treasuryAccountId) {

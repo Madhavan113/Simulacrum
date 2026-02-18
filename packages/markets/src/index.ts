@@ -11,7 +11,8 @@ export {
   resolveMarket,
   selfAttestMarket,
   submitOracleVote,
-  type ResolveMarketOptions
+  type ResolveMarketOptions,
+  type ReputationLookup
 } from "./resolve.js";
 
 export { claimWinnings, type ClaimWinningsOptions } from "./claim.js";

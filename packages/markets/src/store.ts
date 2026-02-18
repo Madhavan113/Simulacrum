@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createPersistentStore } from "@simulacrum/core";
 
 import type { ClaimRecord, Market, MarketBet, MarketOrder } from "./types.js";
 
@@ -29,111 +28,45 @@ export function createMarketStore(): MarketStore {
   };
 }
 
-function isPersistenceEnabled(): boolean {
-  const flag = (process.env.SIMULACRUM_PERSIST_STATE ?? "true").toLowerCase();
-
-  if (flag === "0" || flag === "false" || flag === "off") {
-    return false;
-  }
-
-  return process.env.NODE_ENV !== "test";
-}
-
-function stateDirectory(): string {
-  return resolve(process.env.SIMULACRUM_STATE_DIR ?? resolve(process.cwd(), ".simulacrum-state"));
-}
-
-function stateFilePath(): string {
-  return resolve(stateDirectory(), "markets.json");
-}
-
-function serializeStore(store: MarketStore): PersistedMarketStore {
-  return {
-    markets: Array.from(store.markets.entries()),
-    bets: Array.from(store.bets.entries()),
-    claims: Array.from(store.claims.entries()),
-    claimIndex: Array.from(store.claimIndex.values()),
-    orders: Array.from(store.orders.entries())
-  };
-}
-
-function loadStoreFromDisk(): MarketStore {
-  const store = createMarketStore();
-
-  if (!isPersistenceEnabled()) {
-    return store;
-  }
-
-  const filePath = stateFilePath();
-
-  if (!existsSync(filePath)) {
-    return store;
-  }
-
-  try {
-    const raw = readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(raw) as Partial<PersistedMarketStore>;
-
-    for (const [key, value] of parsed.markets ?? []) {
+const persistence = createPersistentStore<MarketStore, PersistedMarketStore>({
+  fileName: "markets.json",
+  create: createMarketStore,
+  serialize(store) {
+    return {
+      markets: Array.from(store.markets.entries()),
+      bets: Array.from(store.bets.entries()),
+      claims: Array.from(store.claims.entries()),
+      claimIndex: Array.from(store.claimIndex.values()),
+      orders: Array.from(store.orders.entries())
+    };
+  },
+  deserialize(store, data) {
+    for (const [key, value] of data.markets ?? []) {
       store.markets.set(key, value);
     }
-    for (const [key, value] of parsed.bets ?? []) {
+    for (const [key, value] of data.bets ?? []) {
       store.bets.set(key, value);
     }
-    for (const [key, value] of parsed.claims ?? []) {
+    for (const [key, value] of data.claims ?? []) {
       store.claims.set(key, value);
     }
-    for (const key of parsed.claimIndex ?? []) {
+    for (const key of data.claimIndex ?? []) {
       store.claimIndex.add(key);
     }
-    for (const [key, value] of parsed.orders ?? []) {
+    for (const [key, value] of data.orders ?? []) {
       store.orders.set(key, value);
     }
-  } catch {
-    // Fall back to clean in-memory state if persisted payload is corrupt.
-    return createMarketStore();
   }
-
-  return store;
-}
-
-function persistStoreToDisk(store: MarketStore): void {
-  if (!isPersistenceEnabled()) {
-    return;
-  }
-
-  const dir = stateDirectory();
-  const filePath = stateFilePath();
-  const tempPath = `${filePath}.tmp`;
-
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(tempPath, JSON.stringify(serializeStore(store), null, 2), "utf8");
-  renameSync(tempPath, filePath);
-}
-
-function clearStoreFromDisk(): void {
-  if (!isPersistenceEnabled()) {
-    return;
-  }
-
-  const filePath = stateFilePath();
-
-  if (existsSync(filePath)) {
-    rmSync(filePath, { force: true });
-  }
-}
-
-let defaultMarketStore = loadStoreFromDisk();
+});
 
 export function getMarketStore(store?: MarketStore): MarketStore {
-  return store ?? defaultMarketStore;
+  return persistence.get(store);
 }
 
 export function persistMarketStore(store?: MarketStore): void {
-  persistStoreToDisk(getMarketStore(store));
+  persistence.persist(store);
 }
 
 export function resetMarketStoreForTests(): void {
-  defaultMarketStore = createMarketStore();
-  clearStoreFromDisk();
+  persistence.reset();
 }

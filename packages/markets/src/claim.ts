@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { transferHbar } from "@simulacrum/core";
+import { transferHbar, validateNonEmptyString } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getMarketStore, persistMarketStore, type MarketStore } from "./store.js";
@@ -25,12 +25,6 @@ function toTinybars(amountHbar: number): bigint {
 
 function fromTinybars(tinybars: bigint): number {
   return Number(tinybars) / Number(TINYBARS_PER_HBAR);
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new MarketError(`${field} must be a non-empty string.`);
-  }
 }
 
 function asMarketError(message: string, error: unknown): MarketError {

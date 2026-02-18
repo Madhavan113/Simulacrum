@@ -1,8 +1,5 @@
-import type { OrderBookSnapshot } from '../api/types'
-
 interface ComputeImpliedOddsInput {
   outcomes: string[]
-  orderBook?: OrderBookSnapshot | null
   initialOddsByOutcome?: Record<string, number>
   stakeByOutcome?: Record<string, number>
   resolvedOutcome?: string
@@ -30,31 +27,6 @@ function normalize(
 
 function evenWeights(outcomes: readonly string[]): Record<string, number> {
   return Object.fromEntries(outcomes.map((outcome) => [outcome, 1]))
-}
-
-function orderBookWeights(outcomes: readonly string[], orderBook?: OrderBookSnapshot | null): Record<string, number> | undefined {
-  if (!orderBook) {
-    return undefined
-  }
-
-  const weights: Record<string, number> = Object.fromEntries(outcomes.map((outcome) => [outcome, 0]))
-  const openOrders = orderBook.orders.filter(order => order.status === 'OPEN')
-
-  for (const order of openOrders) {
-    if (!(order.outcome in weights)) {
-      continue
-    }
-
-    const notional = order.quantity * order.price
-
-    if (order.side === 'BID') {
-      weights[order.outcome] += notional
-    } else {
-      weights[order.outcome] += order.quantity * (1 - order.price)
-    }
-  }
-
-  return weights
 }
 
 function toPercentages(outcomes: readonly string[], rawWeights: Record<string, number>): Record<string, number> {
@@ -104,12 +76,11 @@ function combineWeightedSignals(
 
 /**
  * Derive displayed odds from multiple signals.
- * Primary signal: staked bet volume.
- * Secondary signal: order book depth.
+ * Primary signal: executed staked bet volume.
  * Baseline fallback: initial listing odds.
  */
 export function computeImpliedOdds(input: ComputeImpliedOddsInput): Record<string, number> {
-  const { outcomes, orderBook, initialOddsByOutcome, stakeByOutcome, resolvedOutcome } = input
+  const { outcomes, initialOddsByOutcome, stakeByOutcome, resolvedOutcome } = input
 
   if (outcomes.length === 0) {
     return {}
@@ -125,29 +96,16 @@ export function computeImpliedOdds(input: ComputeImpliedOddsInput): Record<strin
 
   const base = normalize(outcomes, initialOddsByOutcome)
   const stake = normalize(outcomes, stakeByOutcome)
-  const depth = normalize(outcomes, orderBookWeights(outcomes, orderBook))
 
   const baselineSignal = base.total > 0 ? base.weights : evenWeights(outcomes)
   const stakeAvailable = stake.total > 0
-  const depthAvailable = depth.total > 0
 
   let signals: Array<{ values: Record<string, number>; weight: number }>
 
-  if (stakeAvailable && depthAvailable) {
+  if (stakeAvailable) {
     signals = [
       { values: baselineSignal, weight: 1.0 },
       { values: stake.weights, weight: 4.0 },
-      { values: depth.weights, weight: 1.0 },
-    ]
-  } else if (stakeAvailable) {
-    signals = [
-      { values: baselineSignal, weight: 1.0 },
-      { values: stake.weights, weight: 4.0 },
-    ]
-  } else if (depthAvailable) {
-    signals = [
-      { values: baselineSignal, weight: 2.5 },
-      { values: depth.weights, weight: 1.5 },
     ]
   } else {
     signals = [{ values: baselineSignal, weight: 1.0 }]

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { submitMessage } from "@simulacrum/core";
+import { submitMessage, validateNonEmptyString } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getMarketStore, persistMarketStore, type MarketStore } from "./store.js";
@@ -20,16 +20,19 @@ interface ResolveMarketDependencies {
   now: () => Date;
 }
 
+export type ReputationLookup = (accountId: string) => number;
+
 export interface ResolveMarketOptions {
   client?: Client;
   store?: MarketStore;
   deps?: Partial<ResolveMarketDependencies>;
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new MarketError(`${field} must be a non-empty string.`);
-  }
+  oracleMinVotes?: number;
+  /**
+   * Server-side reputation lookup. When provided, the caller-supplied
+   * `reputationScore` on oracle votes is ignored and replaced with the
+   * value returned by this function.
+   */
+  reputationLookup?: ReputationLookup;
 }
 
 function toMarketError(message: string, error: unknown): MarketError {
@@ -290,6 +293,15 @@ export async function submitOracleVote(
     throw new MarketError(`Market ${input.marketId} is already resolved.`);
   }
 
+  const voterAccountId = input.voterAccountId.trim();
+  const existingVote = (market.oracleVotes ?? []).find((entry) => entry.voterAccountId === voterAccountId);
+
+  if (existingVote) {
+    throw new MarketError(
+      `Account ${voterAccountId} has already submitted an oracle vote for market ${input.marketId}.`
+    );
+  }
+
   const normalizedOutcome = input.outcome.trim().toUpperCase();
 
   if (!market.outcomes.includes(normalizedOutcome)) {
@@ -303,14 +315,18 @@ export async function submitOracleVote(
     now: () => new Date(),
     ...options.deps
   };
+  const verifiedReputation = options.reputationLookup
+    ? options.reputationLookup(voterAccountId)
+    : input.reputationScore;
+
   const vote: MarketOracleVote = {
     id: randomUUID(),
     marketId: market.id,
-    voterAccountId: input.voterAccountId,
+    voterAccountId,
     outcome: normalizedOutcome,
     confidence: normalizeConfidence(input.confidence),
     reason: input.reason,
-    reputationScore: input.reputationScore,
+    reputationScore: verifiedReputation,
     createdAt: deps.now().toISOString()
   };
 
@@ -328,7 +344,7 @@ export async function submitOracleVote(
 
   const windowEnded = Date.now() >= Date.parse(market.challengeWindowEndsAt);
   const votes = market.oracleVotes ?? [];
-  const minVotes = 2;
+  const minVotes = options.oracleMinVotes ?? 2;
   const shouldFinalize = windowEnded || votes.length >= minVotes;
 
   if (!shouldFinalize) {

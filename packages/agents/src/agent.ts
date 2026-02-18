@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { clamp, validateNonEmptyString, validateNonNegativeNumber } from "@simulacrum/core";
+
 export type AgentMode = "AGGRESSIVE" | "BALANCED" | "CONSERVATIVE";
 
 export interface MarketSnapshot {
@@ -47,22 +49,6 @@ export class AgentError extends Error {
     super(message, cause ? { cause } : undefined);
     this.name = "AgentError";
   }
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new AgentError(`${field} must be a non-empty string.`);
-  }
-}
-
-function validateNonNegativeNumber(value: number, field: string): void {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new AgentError(`${field} must be a non-negative number.`);
-  }
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 export class BaseAgent {

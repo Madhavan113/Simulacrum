@@ -1,3 +1,5 @@
+import { clamp } from "@simulacrum/core";
+
 import type { ReputationAttestation, ReputationScore } from "./types.js";
 
 export interface ReputationScoreOptions {
@@ -6,10 +8,6 @@ export interface ReputationScoreOptions {
   maxScore?: number;
   decayHalfLifeDays?: number;
   now?: Date;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 function decayWeight(attestationDate: Date, now: Date, halfLifeDays: number): number {

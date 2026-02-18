@@ -62,3 +62,23 @@ export {
   type AccountStorageOptions,
   type CreateAccountResult
 } from "./accounts.js";
+
+export {
+  createPersistentStore,
+  isPersistenceEnabled,
+  stateDirectory,
+  stateFilePath,
+  type PersistentStore,
+  type PersistentStoreOptions
+} from "./persistence.js";
+
+export {
+  ValidationError,
+  clamp,
+  validateFiniteNumber,
+  validateNonEmptyString,
+  validateNonNegativeInteger,
+  validateNonNegativeNumber,
+  validatePositiveInteger,
+  validatePositiveNumber
+} from "./validation.js";

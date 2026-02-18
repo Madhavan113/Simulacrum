@@ -1,6 +1,6 @@
 export type DitherPattern = 'bayer4' | 'checker' | 'diamond' | 'hatch' | 'plus' | 'stair'
 
-const BAYER4 = [
+export const BAYER4 = [
   [ 0,  8,  2, 10],
   [12,  4, 14,  6],
   [ 3, 11,  1,  9],

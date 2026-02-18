@@ -37,3 +37,21 @@ export {
   type OpenClawIntegrationHandlers,
   type OpenClawToolCall
 } from "./openclaw.js";
+
+export {
+  PlatformClient,
+  createPlatformClient,
+  type ChallengeResponse,
+  type ClaimWinningsInput,
+  type CreateMarketInput,
+  type Market,
+  type PlaceBetInput,
+  type PlaceOrderInput,
+  type PlatformClientOptions,
+  type RegisterAgentInput,
+  type RegisterAgentResponse,
+  type ResolveMarketInput,
+  type VerifyChallengeInput,
+  type VerifyChallengeResponse,
+  type WalletBalance
+} from "./platform-client.js";

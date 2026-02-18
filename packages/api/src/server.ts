@@ -6,6 +6,15 @@ import { WebSocketServer } from "ws";
 import { BaseAgent, createRandomStrategy } from "@simulacrum/agents";
 
 import {
+  createAgentAuthService,
+  type AgentAuthService
+} from "./agent-platform/auth.js";
+import {
+  createAgentFaucetService,
+  type AgentFaucetService
+} from "./agent-platform/faucet.js";
+import type { AgentPlatformOptions } from "./agent-platform/types.js";
+import {
   createAutonomyEngine,
   type AutonomyEngine,
   type AutonomyEngineOptions
@@ -16,10 +25,14 @@ import {
   type ClawdbotNetworkOptions
 } from "./clawdbots/network.js";
 import { createEventBus, type ApiEventBus } from "./events.js";
+import { createAgentOnlyModeGuard } from "./middleware/agent-auth.js";
 import { runMarketLifecycleSweep } from "./markets/lifecycle.js";
 import { createAutonomyMutationGuard } from "./middleware/autonomy-guard.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
+import { createCorsMiddleware } from "./middleware/cors.js";
+import { createRateLimitMiddleware } from "./middleware/rate-limit.js";
 import { createAgentsRouter, type AgentRegistry } from "./routes/agents.js";
+import { createAgentV1Router } from "./routes/agent-v1.js";
 import { createAutonomyRouter } from "./routes/autonomy.js";
 import { createClawdbotsRouter } from "./routes/clawdbots.js";
 import { createInsuranceRouter } from "./routes/insurance.js";
@@ -48,6 +61,8 @@ export interface ApiServer {
   httpServer: HttpServer;
   autonomyEngine: AutonomyEngine | null;
   clawdbotNetwork: ClawdbotNetwork | null;
+  agentAuthService: AgentAuthService | null;
+  agentFaucetService: AgentFaucetService | null;
   start: (port?: number) => Promise<number>;
   stop: () => Promise<void>;
 }
@@ -97,18 +112,97 @@ export interface ApiMarketLifecycleOptions {
   resolvedByAccountId?: string;
 }
 
+export interface ApiAgentPlatformOptions extends AgentPlatformOptions {}
+
+export interface ApiCorsOptions {
+  allowedOrigins?: string | string[];
+}
+
 export interface CreateApiServerOptions {
   apiKey?: string;
   seedAgents?: boolean;
   autonomy?: ApiAutonomyOptions;
   clawdbots?: ApiClawdbotOptions;
   marketLifecycle?: ApiMarketLifecycleOptions;
+  agentPlatform?: ApiAgentPlatformOptions;
+  cors?: ApiCorsOptions;
+}
+
+interface ResolvedAgentPlatformOptions {
+  enabled: boolean;
+  agentOnlyMode: boolean;
+  legacyRoutesEnabled: boolean;
+  selfRegistrationEnabled: boolean;
+  jwtSecret?: string;
+  jwtTtlSeconds?: number;
+  challengeTtlSeconds?: number;
+  walletStoreSecret?: string;
+  initialFundingHbar?: number;
+  refillThresholdHbar?: number;
+  refillTargetHbar?: number;
+  refillCooldownSeconds?: number;
+  refillIntervalMs?: number;
+  dailyFaucetCapHbar?: number;
+}
+
+function parseBooleanOption(value: boolean | string | undefined, fallback: boolean): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === "1" || normalized === "true" || normalized === "on") {
+      return true;
+    }
+
+    if (normalized === "0" || normalized === "false" || normalized === "off") {
+      return false;
+    }
+  }
+
+  return fallback;
+}
+
+function resolveAgentPlatformOptions(input: ApiAgentPlatformOptions | undefined): ResolvedAgentPlatformOptions {
+  const enabled = parseBooleanOption(
+    input?.enabled ?? process.env.AGENT_PLATFORM_ENABLED,
+    false
+  );
+
+  return {
+    enabled,
+    agentOnlyMode: parseBooleanOption(
+      input?.agentOnlyMode ?? process.env.AGENT_PLATFORM_AGENT_ONLY_MODE,
+      true
+    ),
+    legacyRoutesEnabled: parseBooleanOption(
+      input?.legacyRoutesEnabled ?? process.env.AGENT_PLATFORM_LEGACY_ROUTES_ENABLED,
+      false
+    ),
+    selfRegistrationEnabled: parseBooleanOption(
+      input?.selfRegistrationEnabled ?? process.env.AGENT_PLATFORM_SELF_REGISTRATION_ENABLED,
+      true
+    ),
+    jwtSecret: input?.jwtSecret,
+    jwtTtlSeconds: input?.jwtTtlSeconds,
+    challengeTtlSeconds: input?.challengeTtlSeconds,
+    walletStoreSecret: input?.walletStoreSecret,
+    initialFundingHbar: input?.initialFundingHbar,
+    refillThresholdHbar: input?.refillThresholdHbar,
+    refillTargetHbar: input?.refillTargetHbar,
+    refillCooldownSeconds: input?.refillCooldownSeconds,
+    refillIntervalMs: input?.refillIntervalMs,
+    dailyFaucetCapHbar: input?.dailyFaucetCapHbar
+  };
 }
 
 export function createApiServer(options: CreateApiServerOptions = {}): ApiServer {
   const app = express();
   const eventBus = createEventBus();
   const registry = new InMemoryAgentRegistry();
+  const agentPlatform = resolveAgentPlatformOptions(options.agentPlatform);
   const autonomyOptions = options.autonomy ?? {};
   const { strictMutations, ...engineOptions } = autonomyOptions;
   const autonomyEngine = createAutonomyEngine({
@@ -145,6 +239,27 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
     process.env.MARKET_AUTO_RESOLVE_ACCOUNT_ID ||
     process.env.HEDERA_ACCOUNT_ID ||
     "SYSTEM_TIMER";
+  const agentAuthService = agentPlatform.enabled
+    ? createAgentAuthService({
+        jwtSecret: agentPlatform.jwtSecret,
+        jwtTtlSeconds: agentPlatform.jwtTtlSeconds,
+        challengeTtlSeconds: agentPlatform.challengeTtlSeconds,
+        walletStoreSecret: agentPlatform.walletStoreSecret
+      })
+    : null;
+  const agentFaucetService =
+    agentPlatform.enabled && agentAuthService
+      ? createAgentFaucetService({
+          authService: agentAuthService,
+          initialFundingHbar: agentPlatform.initialFundingHbar,
+          refillThresholdHbar: agentPlatform.refillThresholdHbar,
+          refillTargetHbar: agentPlatform.refillTargetHbar,
+          refillCooldownSeconds: agentPlatform.refillCooldownSeconds,
+          refillIntervalMs: agentPlatform.refillIntervalMs,
+          dailyFaucetCapHbar: agentPlatform.dailyFaucetCapHbar
+        })
+      : null;
+  const legacyRoutesEnabled = !agentPlatform.enabled || agentPlatform.legacyRoutesEnabled;
   let marketLifecycleInterval: ReturnType<typeof setInterval> | null = null;
 
   if (options.seedAgents) {
@@ -162,20 +277,41 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
     );
   }
 
+  app.use(createCorsMiddleware({ allowedOrigins: options.cors?.allowedOrigins }));
+  app.use(createRateLimitMiddleware({ windowMs: 60_000, maxRequests: 100 }));
   app.use(express.json());
   app.use(createAuthMiddleware({ apiKey: options.apiKey }));
+  if (agentPlatform.enabled && agentPlatform.agentOnlyMode && agentAuthService) {
+    app.use(createAgentOnlyModeGuard(agentAuthService));
+  }
   app.use(createAutonomyMutationGuard({ strictMutations }));
 
   app.get("/health", (_request, response) => {
     response.json({ ok: true, service: "@simulacrum/api" });
   });
 
-  app.use("/markets", createMarketsRouter(eventBus));
-  app.use("/agents", createAgentsRouter(registry, eventBus));
-  app.use("/autonomy", createAutonomyRouter(autonomyEngine));
-  app.use("/clawdbots", createClawdbotsRouter(clawdbotNetwork));
-  app.use("/reputation", createReputationRouter(eventBus));
-  app.use("/insurance", createInsuranceRouter(eventBus));
+  if (agentPlatform.enabled && agentAuthService && agentFaucetService) {
+    const authRateLimit = createRateLimitMiddleware({ windowMs: 60_000, maxRequests: 20 });
+    app.use(
+      "/agent/v1",
+      authRateLimit,
+      createAgentV1Router({
+        eventBus,
+        authService: agentAuthService,
+        faucetService: agentFaucetService,
+        selfRegistrationEnabled: agentPlatform.selfRegistrationEnabled
+      })
+    );
+  }
+
+  if (legacyRoutesEnabled) {
+    app.use("/markets", createMarketsRouter(eventBus));
+    app.use("/agents", createAgentsRouter(registry, eventBus));
+    app.use("/autonomy", createAutonomyRouter(autonomyEngine));
+    app.use("/clawdbots", createClawdbotsRouter(clawdbotNetwork));
+    app.use("/reputation", createReputationRouter(eventBus));
+    app.use("/insurance", createInsuranceRouter(eventBus));
+  }
 
   const httpServer = createServer(app);
   const webSocketServer = new WebSocketServer({ server: httpServer, path: "/ws" });
@@ -196,11 +332,16 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
     httpServer,
     autonomyEngine,
     clawdbotNetwork,
+    agentAuthService,
+    agentFaucetService,
     async start(port = 3001): Promise<number> {
       await new Promise<void>((resolve) => {
         httpServer.listen(port, () => resolve());
       });
 
+      if (agentFaucetService) {
+        agentFaucetService.start();
+      }
       if (autonomyEngine) {
         await autonomyEngine.start();
       }
@@ -245,6 +386,12 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
       }
       if (autonomyEngine) {
         await autonomyEngine.stop();
+      }
+      if (agentFaucetService) {
+        agentFaucetService.stop();
+      }
+      if (agentAuthService) {
+        agentAuthService.close();
       }
 
       unsubscribe();

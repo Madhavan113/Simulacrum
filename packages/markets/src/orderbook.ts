@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { getMessages, submitMessage } from "@simulacrum/core";
+import { getMessages, submitMessage, validateNonEmptyString, validatePositiveNumber } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getMarketStore, persistMarketStore, type MarketStore } from "./store.js";
@@ -28,18 +28,6 @@ export interface GetOrderBookOptions {
   store?: MarketStore;
   includeMirrorNode?: boolean;
   deps?: Partial<OrderBookDependencies>;
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new MarketError(`${field} must be a non-empty string.`);
-  }
-}
-
-function validatePositiveNumber(value: number, field: string): void {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new MarketError(`${field} must be a positive number.`);
-  }
 }
 
 function parseMessage(message: string): Record<string, unknown> | null {

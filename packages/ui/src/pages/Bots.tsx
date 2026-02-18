@@ -1,103 +1,27 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { clawdbotsApi } from '../api/clawdbots'
-import type { ClawdbotGoal, ClawdbotMessage, ClawdbotProfile } from '../api/types'
+import type { ClawdbotGoal } from '../api/types'
+import { BotCard } from '../components/BotCard'
 import { PageHeader } from '../components/layout/PageHeader'
+import { SkeletonCard } from '../components/Skeleton'
+import { ThreadMessage } from '../components/ThreadMessage'
 import { useClawdbotGoals, useClawdbotStatus, useClawdbots, useClawdbotThread } from '../hooks/useClawdbots'
-
-function BotCard({ bot, goal }: { bot: ClawdbotProfile; goal?: ClawdbotGoal }) {
-  return (
-    <div
-      className="flex flex-col gap-2 p-4"
-      style={{ border: '1px solid var(--border)', borderRadius: 14, background: 'var(--bg-surface)' }}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-primary">{bot.name}</span>
-        <span
-          className="label"
-          style={{
-            fontSize: 10,
-            color: bot.origin === 'community' ? 'var(--accent)' : 'var(--text-muted)',
-            border: '1px solid',
-            borderColor: bot.origin === 'community' ? 'var(--accent-dim)' : 'var(--border)',
-            padding: '1px 6px',
-            borderRadius: 3,
-          }}
-        >
-          {bot.origin}
-        </span>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>{bot.accountId}</span>
-      </div>
-      <div className="flex items-center gap-4">
-        <span className="label" style={{ fontSize: 10 }}>
-          Strategy: <span className="text-primary">{bot.strategy}</span>
-        </span>
-        <span className="label" style={{ fontSize: 10 }}>
-          Mode: <span className="text-primary">{bot.mode}</span>
-        </span>
-      </div>
-      <div className="flex items-center gap-4">
-        <span className="label" style={{ fontSize: 10 }}>
-          Bankroll: <span className="text-primary">{bot.bankrollHbar} HBAR</span>
-        </span>
-        <span className="label" style={{ fontSize: 10 }}>
-          Rep: <span className="text-primary">{bot.reputationScore.toFixed(2)}</span>
-        </span>
-      </div>
-      {goal && (
-        <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-          <span className="label" style={{ fontSize: 10 }}>
-            Goal: <span className="text-primary">{goal.title}</span>
-          </span>
-          <span
-            className="label"
-            style={{
-              fontSize: 10,
-              color: goal.status === 'FAILED' ? '#ff8a80' : goal.status === 'COMPLETED' ? 'var(--accent)' : '#ffd180',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-              padding: '1px 6px',
-            }}
-          >
-            {goal.status}
-          </span>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ThreadMessage({ msg }: { msg: ClawdbotMessage }) {
-  return (
-    <div className="flex flex-col gap-1 px-4 py-2.5 border-b" style={{ borderColor: 'var(--border)' }}>
-      <div className="flex items-center gap-2">
-        {msg.botName && (
-          <span className="label text-xs" style={{ color: 'var(--accent)' }}>{msg.botName}</span>
-        )}
-        <span className="font-mono text-xs" style={{ color: 'var(--text-dim)' }}>
-          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-        </span>
-      </div>
-      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{msg.text}</span>
-    </div>
-  )
-}
 
 export function Bots() {
   const { data: status } = useClawdbotStatus()
   const { data: bots = [], isLoading } = useClawdbots()
   const { data: thread = [] } = useClawdbotThread()
   const { data: goals = [] } = useClawdbotGoals()
-  const communityBots = bots.filter(bot => bot.origin === 'community')
-  const activeGoals = goals.filter(goal => goal.status === 'IN_PROGRESS' || goal.status === 'PENDING')
-  const goalByBotId = goals.reduce<Record<string, ClawdbotGoal>>((acc, goal) => {
+  const communityBots = useMemo(() => bots.filter(bot => bot.origin === 'community'), [bots])
+  const activeGoals = useMemo(() => goals.filter(goal => goal.status === 'IN_PROGRESS' || goal.status === 'PENDING'), [goals])
+  const goalByBotId = useMemo(() => goals.reduce<Record<string, ClawdbotGoal>>((acc, goal) => {
     const current = acc[goal.botId]
     if (!current || Date.parse(goal.updatedAt) > Date.parse(current.updatedAt)) {
       acc[goal.botId] = goal
     }
     return acc
-  }, {})
+  }, {}), [goals])
 
   const queryClient = useQueryClient()
   const startMut = useMutation({ mutationFn: clawdbotsApi.start, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['clawdbots'] }) })
@@ -207,8 +131,8 @@ export function Bots() {
         {/* Bot cards grid (60%) */}
         <section className="flex-1 overflow-y-auto px-8 py-6" style={{ borderRight: '1px solid var(--border)' }}>
           {isLoading && (
-            <div className="flex items-center justify-center py-16">
-              <span className="label">Loading…</span>
+            <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              {Array.from({ length: 4 }, (_, i) => <SkeletonCard key={i} />)}
             </div>
           )}
           {!isLoading && bots.length === 0 && (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { HashScanLink } from '../components/HashScanLink'
 import { OddsBar } from '../components/OddsBar'
 import { useAgents } from '../hooks/useAgents'
@@ -45,24 +45,39 @@ function toResolutionCountdownLabel(closeTime: string, status: string, resolvedA
   return `Resolves in ${seconds}s`
 }
 
+function CountdownLabel({ closeTime, status, resolvedAt }: { closeTime: string; status: string; resolvedAt?: string }) {
+  const [nowMs, setNowMs] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (status === 'RESOLVED') return
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
+  }, [status])
+
+  const label = toResolutionCountdownLabel(closeTime, status, resolvedAt, nowMs)
+  return <p className="label mt-2" style={{ fontSize: 10 }}>{label}</p>
+}
+
 export function MarketDetail({ marketId }: MarketDetailProps) {
   const { data: market, isLoading } = useMarket(marketId)
   const { data: betSnapshot } = useMarketBets(marketId)
   const { data: orderBook } = useOrderBook(marketId)
   const { data: agents = [] } = useAgents()
-  const [nowMs, setNowMs] = useState(() => Date.now())
 
-  useEffect(() => {
-    if (!market || market.status === 'RESOLVED') {
-      return
-    }
+  const odds = useMemo(() => market ? computeImpliedOdds({
+    outcomes: market.outcomes,
+    initialOddsByOutcome: market.initialOddsByOutcome,
+    stakeByOutcome: betSnapshot?.stakeByOutcome,
+    resolvedOutcome: market.resolvedOutcome,
+  }) : {}, [market, betSnapshot])
 
-    const timer = window.setInterval(() => {
-      setNowMs(Date.now())
-    }, 1_000)
+  const accountNameById = useMemo(() => agents.reduce<Record<string, string>>((acc, agent) => {
+    acc[agent.accountId] = agent.name
+    return acc
+  }, {}), [agents])
 
-    return () => window.clearInterval(timer)
-  }, [market?.id, market?.status])
+  const sortedVotes = useMemo(() => [...(market?.oracleVotes ?? [])].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)), [market?.oracleVotes])
+  const sortedChallenges = useMemo(() => [...(market?.challenges ?? [])].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)), [market?.challenges])
 
   if (isLoading || !market) {
     return (
@@ -72,33 +87,16 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
     )
   }
 
-  const odds = computeImpliedOdds({
-    outcomes: market.outcomes,
-    orderBook,
-    initialOddsByOutcome: market.initialOddsByOutcome,
-    stakeByOutcome: betSnapshot?.stakeByOutcome,
-    resolvedOutcome: market.resolvedOutcome,
-  })
   const isDemoMarket = market.question.startsWith('[DEMO]')
   const openOrderCount = orderBook?.orders.filter(order => order.status === 'OPEN').length ?? 0
   const totalStakedHbar = betSnapshot?.totalStakedHbar ?? 0
   const hasStakeSignal = totalStakedHbar > 0
-  const hasOrderbookSignal = openOrderCount > 0
   const pricingSignalLabel = hasStakeSignal
-    ? 'Stake-weighted with order-book depth as a secondary signal'
-    : hasOrderbookSignal
-      ? 'Seed odds blended with thin order-book depth'
-      : 'Seed listing odds'
-  const closeTimerLabel = toResolutionCountdownLabel(market.closeTime, market.status, market.resolvedAt, nowMs)
+    ? 'Stake-weighted from executed fills'
+    : 'Seed listing odds (no executed fills yet)'
   const challenges = market.challenges ?? []
   const oracleVotes = market.oracleVotes ?? []
   const hasDisputeLog = market.status === 'DISPUTED' || Boolean(market.selfAttestation) || challenges.length > 0 || oracleVotes.length > 0
-  const accountNameById = agents.reduce<Record<string, string>>((acc, agent) => {
-    acc[agent.accountId] = agent.name
-    return acc
-  }, {})
-  const sortedVotes = [...oracleVotes].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
-  const sortedChallenges = [...challenges].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
 
   const stakeByOutcome = Object.fromEntries(
     market.outcomes.map(outcome => [outcome, betSnapshot?.stakeByOutcome?.[outcome] ?? 0]),
@@ -130,9 +128,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
         {market.description && (
           <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>{market.description}</p>
         )}
-        <p className="label mt-2" style={{ fontSize: 10 }}>
-          {closeTimerLabel}
-        </p>
+        <CountdownLabel closeTime={market.closeTime} status={market.status} resolvedAt={market.resolvedAt} />
       </div>
 
       {/* Scrollable body */}

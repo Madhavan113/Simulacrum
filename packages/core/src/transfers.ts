@@ -7,11 +7,15 @@ import {
   TransferTransaction
 } from "@hashgraph/sdk";
 
-import { getHederaClient, type HederaNetwork } from "./client.js";
-
-const HASHSCAN_BASE_URL = "https://hashscan.io";
-const DEFAULT_NETWORK: HederaNetwork = "testnet";
-const TINYBARS_PER_HBAR = 100_000_000n;
+import { type HederaNetwork } from "./client.js";
+import {
+  TINYBARS_PER_HBAR,
+  buildTransactionUrl,
+  resolveClient,
+  resolveNetwork,
+  toTinybars
+} from "./hedera-utils.js";
+import { validateFiniteNumber, validateNonEmptyString, validatePositiveNumber } from "./validation.js";
 
 export interface HbarTransfer {
   accountId: string;
@@ -40,52 +44,12 @@ export class HederaTransferError extends Error {
   }
 }
 
-function resolveClient(client?: Client): Client {
-  return client ?? getHederaClient();
-}
-
-function resolveNetwork(client: Client): HederaNetwork {
-  const network = client.ledgerId?.toString().toLowerCase();
-
-  if (network === "mainnet" || network === "previewnet" || network === "testnet") {
-    return network;
-  }
-
-  return DEFAULT_NETWORK;
-}
-
-function buildTransactionUrl(network: HederaNetwork, transactionId: string): string {
-  return `${HASHSCAN_BASE_URL}/${network}/transaction/${encodeURIComponent(transactionId)}`;
-}
-
 function asHederaTransferError(message: string, error: unknown): HederaTransferError {
   if (error instanceof HederaTransferError) {
     return error;
   }
 
   return new HederaTransferError(message, error);
-}
-
-function validateNonEmptyString(value: string, fieldName: string): void {
-  if (value.trim().length === 0) {
-    throw new HederaTransferError(`${fieldName} must be a non-empty string.`);
-  }
-}
-
-function validatePositiveNumber(value: number, fieldName: string): void {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new HederaTransferError(`${fieldName} must be a positive number.`);
-  }
-}
-
-function validateFiniteNumber(value: number, fieldName: string): void {
-  if (!Number.isFinite(value)) {
-    throw new HederaTransferError(`${fieldName} must be a finite number.`);
-  }
-}
-
-function toTinybars(amount: number): bigint {
-  return BigInt(Math.round(amount * Number(TINYBARS_PER_HBAR)));
 }
 
 function validateMultiTransfer(transfers: readonly HbarTransfer[]): void {

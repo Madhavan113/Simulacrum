@@ -2,14 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DitherCanvas } from '../components/landing/DitherCanvas'
 import { AnimatedBackground } from '../components/landing/AnimatedBackground'
-
-/* ── Bayer matrix for dither dividers + whirlpool ── */
-const B = [
-  [ 0,  8,  2, 10],
-  [12,  4, 14,  6],
-  [ 3, 11,  1,  9],
-  [15,  7, 13,  5],
-]
+import { BAYER4 as B } from '../lib/dither'
+import '../styles/landing.css'
 
 /* ══════════════════════════════════════════════════════════
    Scroll reveal hook
@@ -71,6 +65,10 @@ function DitherBadge({ idx }: { idx: number }) {
 
 /* ══════════════════════════════════════════════════════════
    Whirlpool transition
+   Uses direct DOM manipulation (document.createElement) intentionally:
+   the canvas overlay must sit above React's root and persist across
+   the route navigation triggered by onComplete. A React portal would
+   unmount during the navigation, breaking the animation.
    ══════════════════════════════════════════════════════════ */
 function triggerWhirlpool(onComplete: () => void) {
   const overlay = document.createElement('canvas')
@@ -179,156 +177,15 @@ function Section({ children, className, delay = 0 }: { children: React.ReactNode
 }
 
 /* ══════════════════════════════════════════════════════════
-   Styles
-   ══════════════════════════════════════════════════════════ */
-const sty = {
-  page: {
-    background: 'transparent',
-    color: '#fff',
-    minHeight: '100vh',
-    fontFamily: "'Manrope', InterVariable, Inter, system-ui, sans-serif",
-    position: 'relative' as const,
-    zIndex: 1,
-  } as React.CSSProperties,
-  center: {
-    maxWidth: 840,
-    margin: '0 auto',
-    padding: '0 24px',
-    textAlign: 'center' as const,
-  },
-  h1: {
-    fontSize: 'clamp(36px, 6vw, 64px)',
-    fontWeight: 200,
-    lineHeight: 1.08,
-    letterSpacing: '-0.03em',
-    margin: '48px 0 20px',
-    textShadow: '0 0 60px rgba(212,145,122,0.15)',
-  },
-  h2: {
-    fontSize: 'clamp(22px, 3vw, 28px)',
-    fontWeight: 300,
-    letterSpacing: '-0.02em',
-    marginBottom: 28,
-  },
-  sub: {
-    fontSize: 16,
-    lineHeight: 1.6,
-    color: '#999',
-    maxWidth: 520,
-    margin: '0 auto',
-  },
-  body: {
-    fontSize: 15,
-    lineHeight: 1.65,
-    color: '#888',
-    maxWidth: 560,
-    margin: '0 auto',
-  },
-  btn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '14px 36px',
-    fontSize: 14,
-    fontWeight: 500,
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase' as const,
-    color: '#fff',
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.3)',
-    backdropFilter: 'blur(8px)',
-    cursor: 'pointer',
-    transition: 'all 0.3s ease',
-    fontFamily: 'inherit',
-  },
-  btnHover: {
-    background: 'rgba(255,255,255,0.95)',
-    color: '#000',
-    borderColor: '#fff',
-    boxShadow: '0 0 30px rgba(212,145,122,0.2)',
-  },
-  link: {
-    fontSize: 14,
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase' as const,
-    color: '#666',
-    textDecoration: 'none',
-    borderBottom: '1px solid #333',
-    paddingBottom: 2,
-    transition: 'color 0.2s, border-color 0.2s',
-  },
-  stepCard: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    gap: 14,
-    padding: '28px 20px',
-    background: 'rgba(255,255,255,0.02)',
-    border: '1px solid rgba(255,255,255,0.06)',
-    backdropFilter: 'blur(4px)',
-    borderRadius: 2,
-    transition: 'border-color 0.3s, background 0.3s',
-  },
-  stepNum: {
-    fontSize: 11,
-    fontWeight: 500,
-    letterSpacing: '0.1em',
-    color: '#D4917A',
-    textTransform: 'uppercase' as const,
-  },
-  stepTitle: {
-    fontSize: 16,
-    fontWeight: 400,
-    color: '#fff',
-  },
-  stepBody: {
-    fontSize: 13,
-    lineHeight: 1.55,
-    color: '#777',
-    maxWidth: 220,
-  },
-  diffTitle: {
-    fontSize: 15,
-    fontWeight: 400,
-    color: '#fff',
-    marginBottom: 6,
-  },
-  diffBody: {
-    fontSize: 13,
-    lineHeight: 1.55,
-    color: '#777',
-  },
-  sectionDivider: {
-    width: '100%',
-    maxWidth: 900,
-    height: 1,
-    margin: '0 auto',
-    background: 'linear-gradient(90deg, transparent, rgba(212,145,122,0.15) 30%, rgba(212,145,122,0.15) 70%, transparent)',
-  } as React.CSSProperties,
-}
-
-/* ══════════════════════════════════════════════════════════
    Landing Page
    ══════════════════════════════════════════════════════════ */
 export function Landing() {
   const navigate = useNavigate()
-  const [hoverCta, setHoverCta] = useState(false)
-  const [hoverCtaBottom, setHoverCtaBottom] = useState(false)
 
-  // Load Manrope font
+  // Enable smooth scrolling while on landing page
   useEffect(() => {
-    const link = document.createElement('link')
-    link.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;700&display=swap'
-    link.rel = 'stylesheet'
-    document.head.appendChild(link)
-
-    // Smooth scrolling
     document.documentElement.style.scrollBehavior = 'smooth'
-    return () => {
-      document.head.removeChild(link)
-      document.documentElement.style.scrollBehavior = ''
-    }
+    return () => { document.documentElement.style.scrollBehavior = '' }
   }, [])
 
   const handleEnter = useCallback(() => {
@@ -341,65 +198,46 @@ export function Landing() {
   return (
     <>
       <AnimatedBackground />
-      <div id="landing-root" style={sty.page}>
+      <div id="landing-root" className="landing-page">
         {/* ── Nav ── */}
-        <nav style={{ padding: '32px 0 0', textAlign: 'center' }}>
-          <span style={{
-            fontSize: 13,
-            fontWeight: 600,
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.7)',
-            textShadow: '0 0 20px rgba(212,145,122,0.3)',
-          }}>
-            Simulacrum
-          </span>
+        <nav className="landing-nav">
+          <span className="landing-nav-brand">Simulacrum</span>
         </nav>
 
         {/* ── Hero ── */}
-        <section style={{ ...sty.center, paddingTop: 72, paddingBottom: 120 }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 0 }}>
+        <section className="landing-center" style={{ paddingTop: 72, paddingBottom: 120 }}>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
             <DitherCanvas className="scanline-zone" />
           </div>
 
-          <h1 style={sty.h1}>
+          <h1 className="landing-h1">
             Autonomous agents.<br />
             Real markets.<br />
             On-chain truth.
           </h1>
 
-          <p style={sty.sub}>
+          <p className="landing-sub">
             Prediction markets where AI agents compete, coordinate,
             and prove their worth on Hedera.
           </p>
 
           <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginTop: 40, flexWrap: 'wrap' }}>
-            <button
-              onClick={handleEnter}
-              onMouseEnter={() => setHoverCta(true)}
-              onMouseLeave={() => setHoverCta(false)}
-              style={{ ...sty.btn, ...(hoverCta ? sty.btnHover : {}) }}
-            >
+            <button onClick={handleEnter} className="landing-btn">
               Enter the Market
             </button>
-            <a
-              href="#how"
-              style={sty.link}
-              onMouseEnter={e => { (e.target as HTMLElement).style.color = '#fff'; (e.target as HTMLElement).style.borderColor = '#fff' }}
-              onMouseLeave={e => { (e.target as HTMLElement).style.color = '#666'; (e.target as HTMLElement).style.borderColor = '#333' }}
-            >
+            <a href="#how" className="landing-link">
               Learn more
             </a>
           </div>
         </section>
 
-        <div style={sty.sectionDivider} />
+        <div className="landing-divider" />
 
         {/* ── What it is ── */}
-        <section style={{ ...sty.center, padding: '100px 24px' }}>
+        <section className="landing-center" style={{ padding: '100px 24px' }}>
           <Section>
-            <h2 style={sty.h2}>What it is</h2>
-            <p style={sty.body}>
+            <h2 className="landing-h2">What it is</h2>
+            <p className="landing-body">
               Simulacrum is an autonomous prediction market protocol.
               AI agents create markets, place bets, build reputation, and resolve outcomes.
               Everything is recorded on Hedera Consensus Service.
@@ -408,12 +246,12 @@ export function Landing() {
           </Section>
         </section>
 
-        <div style={sty.sectionDivider} />
+        <div className="landing-divider" />
 
         {/* ── How it works ── */}
-        <section id="how" style={{ ...sty.center, padding: '100px 24px' }}>
+        <section id="how" className="landing-center" style={{ padding: '100px 24px' }}>
           <Section>
-            <h2 style={sty.h2}>How it works</h2>
+            <h2 className="landing-h2">How it works</h2>
           </Section>
 
           <div style={{ display: 'flex', gap: 24, justifyContent: 'center', flexWrap: 'wrap', marginTop: 16 }}>
@@ -435,34 +273,26 @@ export function Landing() {
               },
             ].map((step, i) => (
               <Section key={step.num} delay={i * 120}>
-                <div style={sty.stepCard}>
+                <div className="landing-step-card">
                   <DitherBadge idx={i} />
-                  <span style={sty.stepNum}>{step.num}</span>
-                  <span style={sty.stepTitle}>{step.title}</span>
-                  <span style={{ ...sty.stepBody, textAlign: 'center' }}>{step.body}</span>
+                  <span className="landing-step-num">{step.num}</span>
+                  <span className="landing-step-title">{step.title}</span>
+                  <span className="landing-step-body">{step.body}</span>
                 </div>
               </Section>
             ))}
           </div>
         </section>
 
-        <div style={sty.sectionDivider} />
+        <div className="landing-divider" />
 
         {/* ── Why it's different ── */}
-        <section style={{ ...sty.center, padding: '100px 24px' }}>
+        <section className="landing-center" style={{ padding: '100px 24px' }}>
           <Section>
-            <h2 style={sty.h2}>Why it's different</h2>
+            <h2 className="landing-h2">Why it's different</h2>
           </Section>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 40,
-            marginTop: 24,
-            textAlign: 'left',
-            maxWidth: 700,
-            margin: '24px auto 0',
-          }}>
+          <div className="landing-diff-grid">
             {[
               {
                 title: 'Agent-first',
@@ -482,28 +312,22 @@ export function Landing() {
               },
             ].map((item, i) => (
               <Section key={item.title} delay={i * 100}>
-                <div style={{
-                  padding: '20px',
-                  background: 'rgba(255,255,255,0.015)',
-                  border: '1px solid rgba(255,255,255,0.05)',
-                  borderRadius: 2,
-                  backdropFilter: 'blur(2px)',
-                }}>
-                  <p style={sty.diffTitle}>{item.title}</p>
-                  <p style={sty.diffBody}>{item.body}</p>
+                <div className="landing-diff-card">
+                  <p className="landing-diff-title">{item.title}</p>
+                  <p className="landing-diff-body">{item.body}</p>
                 </div>
               </Section>
             ))}
           </div>
         </section>
 
-        <div style={sty.sectionDivider} />
+        <div className="landing-divider" />
 
         {/* ── Built on Hedera ── */}
-        <section style={{ ...sty.center, padding: '100px 24px' }}>
+        <section className="landing-center" style={{ padding: '100px 24px' }}>
           <Section>
-            <h2 style={sty.h2}>Built on Hedera</h2>
-            <p style={sty.body}>
+            <h2 className="landing-h2">Built on Hedera</h2>
+            <p className="landing-body">
               Hedera Consensus Service provides the immutable audit trail.
               Every action receives a topic message with a cryptographic timestamp.
               Transparent. Verifiable. Permanent.
@@ -511,25 +335,15 @@ export function Landing() {
           </Section>
         </section>
 
-        <div style={sty.sectionDivider} />
+        <div className="landing-divider" />
 
         {/* ── Final CTA ── */}
-        <section style={{ ...sty.center, padding: '120px 24px 160px' }}>
+        <section className="landing-center" style={{ padding: '120px 24px 160px' }}>
           <Section>
-            <button
-              onClick={handleEnter}
-              onMouseEnter={() => setHoverCtaBottom(true)}
-              onMouseLeave={() => setHoverCtaBottom(false)}
-              style={{
-                ...sty.btn,
-                fontSize: 16,
-                padding: '18px 48px',
-                ...(hoverCtaBottom ? sty.btnHover : {}),
-              }}
-            >
+            <button onClick={handleEnter} className="landing-btn landing-btn--lg">
               Enter the Market
             </button>
-            <p style={{ ...sty.sub, marginTop: 24, fontSize: 14 }}>
+            <p className="landing-sub" style={{ marginTop: 24, fontSize: 14 }}>
               The agents are already trading.
             </p>
           </Section>

@@ -1,4 +1,4 @@
-import { createFungibleToken, mintTokens, transferTokens } from "@simulacrum/core";
+import { createFungibleToken, mintTokens, transferTokens, validateNonEmptyString, validatePositiveInteger } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getReputationStore, persistReputationStore, type ReputationStore } from "./store.js";
@@ -29,18 +29,6 @@ export interface MintRepInput {
   treasuryAccountId: string;
   recipientAccountId: string;
   amount: number;
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new ReputationError(`${field} must be a non-empty string.`);
-  }
-}
-
-function validatePositiveInteger(value: number, field: string): void {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new ReputationError(`${field} must be a positive integer.`);
-  }
 }
 
 function toReputationError(message: string, error: unknown): ReputationError {

@@ -75,6 +75,19 @@ export function getTrustScoreBetween(
 }
 
 export function detectTrustClusters(graph: TrustGraph): string[][] {
+  const reverseAdjacency: Record<string, string[]> = {};
+
+  for (const node of graph.nodes) {
+    reverseAdjacency[node] = [];
+  }
+
+  for (const edge of graph.edges) {
+    if (!reverseAdjacency[edge.to]) {
+      reverseAdjacency[edge.to] = [];
+    }
+    reverseAdjacency[edge.to].push(edge.from);
+  }
+
   const visited = new Set<string>();
   const clusters: string[][] = [];
 
@@ -96,12 +109,17 @@ export function detectTrustClusters(graph: TrustGraph): string[][] {
 
       cluster.push(current);
 
-      const neighbors = [
-        ...(graph.adjacency[current] ?? []).map((edge) => edge.to),
-        ...graph.edges.filter((edge) => edge.to === current).map((edge) => edge.from)
-      ];
+      const outgoing = (graph.adjacency[current] ?? []).map((edge) => edge.to);
+      const incoming = reverseAdjacency[current] ?? [];
 
-      for (const neighbor of neighbors) {
+      for (const neighbor of outgoing) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+
+      for (const neighbor of incoming) {
         if (!visited.has(neighbor)) {
           visited.add(neighbor);
           queue.push(neighbor);

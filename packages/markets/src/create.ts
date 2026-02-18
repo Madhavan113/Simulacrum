@@ -1,4 +1,4 @@
-import { createFungibleToken, createTopic, submitMessage } from "@simulacrum/core";
+import { createFungibleToken, createTopic, submitMessage, validateNonEmptyString } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getMarketStore, persistMarketStore, type MarketStore } from "./store.js";
@@ -24,12 +24,6 @@ export interface CreateMarketResult {
 }
 
 const DEFAULT_OUTCOMES = ["YES", "NO"];
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new MarketError(`${field} must be a non-empty string.`);
-  }
-}
 
 function normalizeOutcomes(outcomes?: readonly string[]): string[] {
   const resolved = outcomes && outcomes.length > 0 ? outcomes : DEFAULT_OUTCOMES;

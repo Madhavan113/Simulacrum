@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { submitMessage, transferHbar } from "@simulacrum/core";
+import { submitMessage, transferHbar, validateNonEmptyString, validatePositiveNumber } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getMarketStore, persistMarketStore, type MarketStore } from "./store.js";
@@ -18,17 +18,6 @@ export interface PlaceBetOptions {
   deps?: Partial<PlaceBetDependencies>;
 }
 
-function validatePositiveNumber(value: number, field: string): void {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new MarketError(`${field} must be a positive number.`);
-  }
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new MarketError(`${field} must be a non-empty string.`);
-  }
-}
 
 function asMarketError(message: string, error: unknown): MarketError {
   if (error instanceof MarketError) {

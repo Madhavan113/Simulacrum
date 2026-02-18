@@ -1,12 +1,5 @@
 import { useEffect, useRef } from 'react'
-
-/* ── Bayer 4x4 ordered-dither threshold matrix (0-15) ── */
-const B = [
-  [ 0,  8,  2, 10],
-  [12,  4, 14,  6],
-  [ 3, 11,  1,  9],
-  [15,  7, 13,  5],
-]
+import { BAYER4 as B } from '../../lib/dither'
 
 /* ── Pattern library: (x,y) => white? ── */
 type PFn = (x: number, y: number) => boolean

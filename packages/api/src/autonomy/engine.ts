@@ -10,6 +10,7 @@ import {
 } from "@simulacrum/agents";
 import {
   EncryptedInMemoryKeyStore,
+  clamp,
   createAccount,
   createHederaClient,
   type HederaNetwork
@@ -22,7 +23,7 @@ import {
   resolveMarket,
   type Market
 } from "@simulacrum/markets";
-import { getReputationStore, submitAttestation } from "@simulacrum/reputation";
+import { getReputationStore } from "@simulacrum/reputation";
 
 import type { ApiEventBus } from "../events.js";
 import type { AgentRegistry } from "../routes/agents.js";
@@ -79,8 +80,6 @@ interface MarketSentiment {
 }
 
 const DEFAULT_TICK_MS = 15_000;
-const BET_PARTICIPATION_SCORE_DELTA = 0.75;
-const BET_PARTICIPATION_CONFIDENCE = 0.2;
 
 function normalizeNetwork(value: string | undefined): HederaNetwork {
   const candidate = (value ?? "testnet").toLowerCase();
@@ -111,10 +110,6 @@ function toMarketSnapshot(market: Market): MarketSnapshot {
     status: market.status,
     closeTime: market.closeTime
   };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 export class AutonomyEngine {
@@ -517,7 +512,7 @@ export class AutonomyEngine {
             amountHbar: amount,
             rationale: decision.rationale
           });
-          await this.applyBetParticipationReputation(market.id, runtime.wallet.accountId);
+          runtime.agent.adjustReputation(0.75);
         } catch (error) {
           this.#eventBus.publish("autonomy.bet.error", {
             marketId: market.id,
@@ -676,38 +671,6 @@ export class AutonomyEngine {
     return client;
   }
 
-  private hasBetParticipationAttestation(accountId: string, marketId: string): boolean {
-    const markerTag = `market-participation:${marketId}`;
-    const store = getReputationStore();
-    return store.attestations.some(
-      (attestation) =>
-        attestation.subjectAccountId === accountId && attestation.tags.includes(markerTag)
-    );
-  }
-
-  private async applyBetParticipationReputation(marketId: string, accountId: string): Promise<void> {
-    if (this.hasBetParticipationAttestation(accountId, marketId)) {
-      return;
-    }
-
-    try {
-      const attestation = await submitAttestation({
-        subjectAccountId: accountId,
-        attesterAccountId: "SYSTEM_BET_ACTIVITY",
-        scoreDelta: BET_PARTICIPATION_SCORE_DELTA,
-        confidence: BET_PARTICIPATION_CONFIDENCE,
-        reason: `Placed stake in market ${marketId}`,
-        tags: ["market-participation", `market:${marketId}`, `market-participation:${marketId}`]
-      });
-      this.#eventBus.publish("reputation.attested", attestation);
-    } catch (error) {
-      this.#eventBus.publish("autonomy.reputation.error", {
-        marketId,
-        accountId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
 }
 
 export function createAutonomyEngine(options: AutonomyEngineOptions): AutonomyEngine {

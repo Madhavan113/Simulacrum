@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { MarketStatus } from '../api/types'
 import { Drawer } from '../components/Drawer'
 import { PageHeader } from '../components/layout/PageHeader'
 import { MarketCard } from '../components/MarketCard'
-import { useMarkets } from '../hooks/useMarkets'
+import { SkeletonRow } from '../components/Skeleton'
+import { useMarketBetsByIds, useMarkets } from '../hooks/useMarkets'
 import { MarketDetail } from './MarketDetail'
 
 const STATUS_FILTERS: Array<MarketStatus | 'ALL'> = ['ALL', 'OPEN', 'RESOLVED', 'CLOSED', 'DISPUTED']
@@ -14,6 +15,17 @@ export function Markets() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const filtered = filter === 'ALL' ? markets : markets.filter(m => m.status === filter)
+  const filteredIds = useMemo(() => filtered.map(m => m.id), [filtered])
+  const betSnapshots = useMarketBetsByIds(filteredIds)
+  const stakeByMarketId: Record<string, Record<string, number>> = {}
+
+  for (const [index, query] of betSnapshots.entries()) {
+    const marketId = filteredIds[index]
+    if (!marketId || !query.data?.stakeByOutcome) {
+      continue
+    }
+    stakeByMarketId[marketId] = query.data.stakeByOutcome
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -61,11 +73,7 @@ export function Markets() {
           ))}
         </div>
 
-        {isLoading && (
-          <div className="flex items-center justify-center py-16">
-            <span className="label">Loading…</span>
-          </div>
-        )}
+        {isLoading && Array.from({ length: 6 }, (_, i) => <SkeletonRow key={i} />)}
 
         {filtered.map(market => (
           <MarketCard
@@ -73,6 +81,7 @@ export function Markets() {
             market={market}
             volumeNorm={0.5}
             horizontal
+            stakeByOutcome={stakeByMarketId[market.id]}
             onClick={() => setSelectedId(market.id)}
           />
         ))}

@@ -11,7 +11,7 @@
 **Project**: Simulacrum - Autonomous Agent Prediction Markets on Hedera
 **Bounty**: $10,000 ETH Denver "Killer App for Agentic Society" (OpenClaw)
 **Deadline**: 5 days
-**Repo Structure**: Monorepo with feature modules
+**Repo Structure**: Monorepo under `ethdenver/` with pnpm workspaces; feature packages in `packages/*`
 
 ### One-Liner
 An agent-native prediction market where AI agents create, trade, and resolve markets about each other's behavior - with insurance, reputation, and coordination games built on 100% native Hedera services.
@@ -28,7 +28,7 @@ An agent-native prediction market where AI agents create, trade, and resolve mar
 ## 🏗️ ARCHITECTURE
 
 ```
-simulacrum/
+ethdenver/
 ├── packages/
 │   ├── core/                    # Hedera SDK wrapper + primitives
 │   │   ├── src/
@@ -36,8 +36,7 @@ simulacrum/
 │   │   │   ├── hts.ts           # Token Service operations
 │   │   │   ├── hcs.ts           # Consensus Service operations
 │   │   │   ├── transfers.ts     # HBAR transfer operations
-│   │   │   ├── accounts.ts      # Account management
-│   │   │   ├── scheduled.ts     # Scheduled transactions
+│   │   │   ├── accounts.ts      # Account management (+ EncryptedInMemoryKeyStore)
 │   │   │   └── index.ts         # Public exports
 │   │   ├── package.json
 │   │   └── tsconfig.json
@@ -49,6 +48,7 @@ simulacrum/
 │   │   │   ├── resolve.ts       # Market resolution
 │   │   │   ├── claim.ts         # Claim winnings
 │   │   │   ├── orderbook.ts     # HCS-based order book
+│   │   │   ├── store.ts         # In-memory + persistence
 │   │   │   ├── types.ts         # Market types/interfaces
 │   │   │   └── index.ts
 │   │   └── package.json
@@ -59,6 +59,8 @@ simulacrum/
 │   │   │   ├── attestation.ts   # HCS attestations
 │   │   │   ├── graph.ts         # Trust graph operations
 │   │   │   ├── tokens.ts        # REP token operations
+│   │   │   ├── store.ts         # Reputation state
+│   │   │   ├── types.ts
 │   │   │   └── index.ts
 │   │   └── package.json
 │   │
@@ -68,20 +70,25 @@ simulacrum/
 │   │   │   ├── pools.ts         # Insurance pool management
 │   │   │   ├── claims.ts        # Process insurance claims
 │   │   │   ├── premiums.ts      # Premium calculations
+│   │   │   ├── store.ts
+│   │   │   ├── types.ts
 │   │   │   └── index.ts
 │   │   └── package.json
 │   │
 │   ├── coordination/            # Coordination games
 │   │   ├── src/
 │   │   │   ├── assurance.ts     # Assurance contracts
-│   │   │   ├── commitment.ts    # Collective commitments
-│   │   │   ├── schelling.ts     # Schelling point discovery
+│   │   │   ├── commitment.ts   # Collective commitments
+│   │   │   ├── schelling.ts    # Schelling point discovery
+│   │   │   ├── store.ts
+│   │   │   ├── types.ts
 │   │   │   └── index.ts
 │   │   └── package.json
 │   │
 │   ├── agents/                  # Agent SDK + simulation
 │   │   ├── src/
 │   │   │   ├── agent.ts         # Base agent class
+│   │   │   ├── platform-client.ts  # API client for agent platform
 │   │   │   ├── strategies/      # Trading/betting strategies
 │   │   │   │   ├── random.ts
 │   │   │   │   ├── reputation-based.ts
@@ -91,62 +98,116 @@ simulacrum/
 │   │   │   └── index.ts
 │   │   └── package.json
 │   │
-│   ├── api/                     # REST API for agents
+│   ├── api/                     # REST API + autonomy + ClawDBots
 │   │   ├── src/
-│   │   │   ├── server.ts        # Express server
+│   │   │   ├── server.ts        # Express server, WebSocket /ws
+│   │   │   ├── events.ts        # Event bus for real-time
+│   │   │   ├── agent-platform/  # Agent auth + faucet + wallet
+│   │   │   │   ├── auth.ts
+│   │   │   │   ├── faucet.ts
+│   │   │   │   ├── store.ts
+│   │   │   │   ├── wallet-store.ts
+│   │   │   │   └── types.ts
+│   │   │   ├── autonomy/       # Autonomous engine
+│   │   │   │   └── engine.ts
+│   │   │   ├── clawdbots/       # ClawDBot network runtime
+│   │   │   │   ├── network.ts
+│   │   │   │   ├── llm-cognition.ts
+│   │   │   │   └── credential-store.ts
+│   │   │   ├── markets/
+│   │   │   │   └── lifecycle.ts # Market lifecycle sweep
 │   │   │   ├── routes/
-│   │   │   │   ├── markets.ts
-│   │   │   │   ├── bets.ts
-│   │   │   │   ├── reputation.ts
+│   │   │   │   ├── agent-v1.ts  # Mounted at /agent/v1
+│   │   │   │   ├── agents.ts
+│   │   │   │   ├── autonomy.ts
+│   │   │   │   ├── clawdbots.ts
 │   │   │   │   ├── insurance.ts
-│   │   │   │   └── agents.ts
+│   │   │   │   ├── markets.ts
+│   │   │   │   └── reputation.ts
 │   │   │   ├── middleware/
 │   │   │   │   ├── auth.ts
-│   │   │   │   └── validation.ts
+│   │   │   │   ├── validation.ts
+│   │   │   │   ├── agent-auth.ts
+│   │   │   │   └── autonomy-guard.ts
+│   │   │   ├── cli/             # CLI entrypoints
+│   │   │   │   ├── reset-state.ts
+│   │   │   │   ├── seed-demo.ts
+│   │   │   │   ├── demo-runner.ts
+│   │   │   │   ├── live-smoke.ts
+│   │   │   │   ├── autonomous-runner.ts
+│   │   │   │   ├── autonomous-smoke.ts
+│   │   │   │   └── clawdbot-network-runner.ts
 │   │   │   └── index.ts
 │   │   └── package.json
 │   │
-│   └── ui/                      # Observer UI (React)
+│   └── ui/                      # Observer UI (React + Vite)
 │       ├── src/
-│       │   ├── App.tsx
+│       │   ├── App.tsx          # Routes: / (Landing), /app/* (Shell)
+│       │   ├── main.tsx
 │       │   ├── components/
+│       │   │   ├── layout/
+│       │   │   │   ├── Shell.tsx
+│       │   │   │   ├── Nav.tsx
+│       │   │   │   └── PageHeader.tsx
+│       │   │   ├── landing/
+│       │   │   │   ├── AnimatedBackground.tsx
+│       │   │   │   └── DitherCanvas.tsx
+│       │   │   ├── dither/
+│       │   │   │   ├── MacroblockReveal.tsx
+│       │   │   │   └── DitherPanel.tsx
 │       │   │   ├── AgentCard.tsx
 │       │   │   ├── MarketCard.tsx
 │       │   │   ├── ActivityFeed.tsx
-│       │   │   ├── ReputationGraph.tsx
-│       │   │   ├── Leaderboard.tsx
+│       │   │   ├── TrustGraph.tsx
+│       │   │   ├── OddsBar.tsx
+│       │   │   ├── Drawer.tsx
+│       │   │   ├── Sparkline.tsx
 │       │   │   └── HashScanLink.tsx
 │       │   ├── hooks/
 │       │   │   ├── useMarkets.ts
 │       │   │   ├── useAgents.ts
-│       │   │   └── useHederaEvents.ts
+│       │   │   ├── useReputation.ts
+│       │   │   ├── useClawdbots.ts
+│       │   │   ├── useAutonomy.ts
+│       │   │   └── useWebSocket.tsx
 │       │   ├── pages/
+│       │   │   ├── Landing.tsx
 │       │   │   ├── Dashboard.tsx
 │       │   │   ├── Markets.tsx
+│       │   │   ├── MarketDetail.tsx   # In-drawer detail view
 │       │   │   ├── Agents.tsx
-│       │   │   └── Market.tsx
+│       │   │   └── Bots.tsx
+│       │   ├── api/
+│       │   │   ├── client.ts
+│       │   │   ├── markets.ts
+│       │   │   ├── agents.ts
+│       │   │   ├── reputation.ts
+│       │   │   ├── insurance.ts
+│       │   │   ├── autonomy.ts
+│       │   │   ├── clawdbots.ts
+│       │   │   └── types.ts
+│       │   ├── lib/
+│       │   │   └── dither.ts
+│       │   ├── utils/
+│       │   │   └── odds.ts
 │       │   └── styles/
+│       │       └── globals.css
 │       ├── package.json
-│       └── vite.config.ts
+│       ├── vite.config.ts
+│       └── tailwind.config.ts
 │
-├── scripts/
-│   ├── demo.ts                  # Full demo script
-│   ├── setup-testnet.ts         # Initialize testnet resources
-│   └── simulate.ts              # Run multi-agent simulation
-│
-├── tests/
-│   ├── core/
-│   ├── markets/
-│   ├── reputation/
-│   ├── insurance/
-│   └── e2e/
-│
+├── docs/
+│   └── plans/                   # Design/impl plans
 ├── .env.example
-├── package.json                 # Workspace root
-├── turbo.json                   # Turborepo config
-├── tsconfig.base.json
+├── package.json                 # Workspace root (pnpm)
+├── pnpm-workspace.yaml
 └── README.md
 ```
+
+**Notes:**
+- **Tests** are colocated in each package (e.g. `core/src/*.test.ts`); no root `tests/` folder.
+- **CLI scripts** live in `packages/api/src/cli/`; run via `pnpm infra:*` from root (e.g. `infra:reset`, `infra:seed`, `infra:clawdbots`).
+- **Scheduled transactions**: not yet in `core` (planned; not implemented).
 
 ---
 
@@ -156,11 +217,22 @@ simulacrum/
 |-------|------------|
 | **Runtime** | Node.js 20+ / TypeScript 5.x |
 | **Hedera SDK** | `@hashgraph/sdk` ^2.51.0 |
-| **Monorepo** | Turborepo + pnpm workspaces |
+| **Monorepo** | pnpm workspaces (`pnpm-workspace.yaml`); no Turborepo |
 | **API** | Express.js + Zod validation |
 | **UI** | React 18 + Vite + TailwindCSS |
 | **Testing** | Vitest |
 | **Linting** | ESLint + Prettier |
+
+### API routes (when legacy routes enabled)
+- `GET /health` — health check
+- `GET|POST /markets` — list/create markets
+- `GET /agents` — list agents
+- `POST /autonomy/start`, `POST /autonomy/stop`, `GET /autonomy/status` — autonomy engine
+- `GET|POST /clawdbots/*` — ClawDBot network (status, thread, bots, join, start, stop, message, markets)
+- `GET /reputation/*` — reputation
+- `GET|POST /insurance/*` — insurance
+- `WS /ws` — real-time event stream
+- `GET|POST /agent/v1/*` — agent platform (when agent platform enabled; auth, faucet, self-registration)
 
 ---
 
@@ -603,16 +675,16 @@ Each feature should be developed as a standalone unit. Use these ticket definiti
 **Package**: `packages/api`
 **Files**: `src/server.ts`, `src/routes/*.ts`
 **Dependencies**: All feature packages
-**Description**: REST API for agents
+**Description**: REST API for agents (+ autonomy + ClawDBots)
 **Acceptance**:
-- [ ] GET /markets
-- [ ] POST /markets
-- [ ] POST /markets/:id/bet
-- [ ] POST /markets/:id/resolve
-- [ ] GET /agents
-- [ ] GET /agents/:id
-- [ ] GET /reputation/:id
-- [ ] WebSocket for real-time updates
+- [x] GET /markets, POST /markets
+- [x] POST /markets/:id/bet, POST /markets/:id/resolve
+- [x] GET /agents, GET /agents/:id
+- [x] GET /reputation/:id
+- [x] /autonomy (status, start, stop, run-now, challenges)
+- [x] /clawdbots (status, thread, bots, join, start, stop, message, markets)
+- [x] WebSocket /ws for real-time updates
+- [x] /agent/v1 (when agent platform enabled)
 
 ---
 
@@ -629,9 +701,9 @@ Each feature should be developed as a standalone unit. Use these ticket definiti
 
 ### UI-002: Market Components
 **Package**: `packages/ui`
-**Files**: `src/components/MarketCard.tsx`, `src/pages/Market.tsx`
+**Files**: `src/components/MarketCard.tsx`, `src/pages/MarketDetail.tsx`
 **Dependencies**: API-001
-**Description**: Market display components
+**Description**: Market display components (MarketDetail used in Dashboard/Markets drawer)
 **Acceptance**:
 - [ ] Market card with odds
 - [ ] Bet history
@@ -662,7 +734,7 @@ Each feature should be developed as a standalone unit. Use these ticket definiti
 
 ### UI-005: Reputation Graph Visualization
 **Package**: `packages/ui`
-**Files**: `src/components/ReputationGraph.tsx`
+**Files**: `src/components/TrustGraph.tsx`
 **Dependencies**: API-001, REP-004
 **Description**: Interactive trust graph
 **Acceptance**:
@@ -887,3 +959,14 @@ Pick a ticket, branch off main, ship it.
 - Added ClawDBot runner command:
   - `packages/api/src/cli/clawdbot-network-runner.ts`
   - root script: `pnpm infra:clawdbots`
+
+### 2026-02-18 (Context doc sync)
+- Updated `context.md` to match current codebase:
+  - Repo root: `ethdenver/`; monorepo via pnpm workspaces (no turbo.json).
+  - Core: removed `scheduled.ts` (not implemented); noted EncryptedInMemoryKeyStore in accounts.
+  - Packages: added `store.ts`/`types.ts` where present (markets, reputation, insurance, coordination); added `platform-client.ts` in agents.
+  - API: full tree for agent-platform/, autonomy/, clawdbots/, markets/lifecycle, middleware (auth, validation, agent-auth, autonomy-guard), routes (agent-v1, agents, autonomy, clawdbots, insurance, markets, reputation), cli/ scripts.
+  - UI: Landing, Shell, Nav, Bots, MarketDetail, TrustGraph, layout/landing/dither, hooks (useClawdbots, useAutonomy, useWebSocket), api (autonomy, clawdbots), lib/dither, utils/odds.
+  - No root `scripts/` or `tests/`; CLI in `packages/api/src/cli/`, tests colocated in packages.
+  - Tech stack: pnpm workspaces only. Added "API routes" summary.
+  - Ticket refs: MarketDetail.tsx, TrustGraph.tsx; API-001 acceptance checklist updated for current routes.

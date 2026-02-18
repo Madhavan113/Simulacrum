@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createTopic, getMessages, submitMessage } from "@simulacrum/core";
+import { clamp, createTopic, getMessages, submitMessage, validateFiniteNumber, validateNonEmptyString } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getReputationStore, persistReputationStore, type ReputationStore } from "./store.js";
@@ -30,22 +30,6 @@ export interface CreateAttestationInput {
 
 export interface CreateAttestationOptions extends EnsureAttestationTopicOptions {
   topicId?: string;
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new ReputationError(`${field} must be a non-empty string.`);
-  }
-}
-
-function validateFiniteNumber(value: number, field: string): void {
-  if (!Number.isFinite(value)) {
-    throw new ReputationError(`${field} must be a finite number.`);
-  }
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 function parseAttestation(message: string): ReputationAttestation | null {

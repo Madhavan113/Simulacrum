@@ -27,10 +27,14 @@ export function Drawer({ open, onClose, children, width = 480 }: DrawerProps) {
         className="fixed inset-0 z-40"
         style={{ background: 'rgba(0,0,0,0.6)' }}
         onClick={onClose}
+        aria-hidden="true"
       />
 
       {/* Drawer panel */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Detail panel"
         className="fixed right-0 top-0 h-screen z-50 flex flex-col border-l"
         style={{
           width,

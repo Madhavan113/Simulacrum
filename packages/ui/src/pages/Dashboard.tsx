@@ -1,82 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { clawdbotsApi } from '../api/clawdbots'
-import type { ClawdbotMessage, WsEvent } from '../api/types'
+import type { WsEvent } from '../api/types'
 import { ActivityFeed } from '../components/ActivityFeed'
 import { Drawer } from '../components/Drawer'
+import { EngineControl } from '../components/EngineControl'
 import { MarketCard } from '../components/MarketCard'
+import { SkeletonCard } from '../components/Skeleton'
+import { StatTile } from '../components/StatTile'
+import { ThreadMessage } from '../components/ThreadMessage'
 import { useClawdbotGoals, useClawdbotStatus, useClawdbotThread } from '../hooks/useClawdbots'
-import { useMarkets } from '../hooks/useMarkets'
+import { useMarketBetsByIds, useMarkets } from '../hooks/useMarkets'
 import { MarketDetail } from './MarketDetail'
-
-function StatTile({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div
-      className="flex flex-col gap-1 p-4"
-      style={{ border: '1px solid var(--border)', borderRadius: 14, background: 'var(--bg-surface)' }}
-    >
-      <span className="label">{label}</span>
-      <span className="text-2xl font-light text-primary" style={{ letterSpacing: -1 }}>{value}</span>
-    </div>
-  )
-}
-
-function EngineControl({
-  label,
-  running,
-  onStart,
-  onStop,
-  isLoading,
-}: {
-  label: string
-  running: boolean
-  onStart: () => void
-  onStop: () => void
-  isLoading: boolean
-}) {
-  return (
-    <div className="flex items-center gap-3 px-4 py-2" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10 }}>
-      <span
-        style={{
-          width: 8, height: 8, borderRadius: '50%',
-          background: running ? 'var(--accent)' : 'var(--text-dim)',
-          flexShrink: 0,
-        }}
-      />
-      <span className="label text-xs flex-1">{label}</span>
-      <button
-        onClick={running ? onStop : onStart}
-        disabled={isLoading}
-        className="label text-xs px-3 py-1"
-        style={{
-          background: running ? 'var(--bg-raised)' : 'var(--accent-dim)',
-          border: '1px solid var(--border)',
-          borderRadius: 6,
-          cursor: isLoading ? 'wait' : 'pointer',
-          opacity: isLoading ? 0.5 : 1,
-        }}
-      >
-        {running ? 'Stop' : 'Start'}
-      </button>
-    </div>
-  )
-}
-
-function ThreadMessage({ msg }: { msg: ClawdbotMessage }) {
-  return (
-    <div className="flex flex-col gap-1 px-4 py-2.5 border-b" style={{ borderColor: 'var(--border)' }}>
-      <div className="flex items-center gap-2">
-        {msg.botName && (
-          <span className="label text-xs" style={{ color: 'var(--accent)' }}>{msg.botName}</span>
-        )}
-        <span className="font-mono text-xs" style={{ color: 'var(--text-dim)' }}>
-          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-        </span>
-      </div>
-      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{msg.text}</span>
-    </div>
-  )
-}
 
 export function Dashboard() {
   const { data: markets = [], isLoading } = useMarkets()
@@ -94,16 +29,28 @@ export function Dashboard() {
   const clawdbotStart = useMutation({ mutationFn: clawdbotsApi.start, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['clawdbots'] }) })
   const clawdbotStop = useMutation({ mutationFn: clawdbotsApi.stop, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['clawdbots'] }) })
 
-  const open = markets.filter(m => m.status === 'OPEN')
-  const resolved = markets.filter(m => m.status === 'RESOLVED')
-  const hasDemoMarkets = markets.some(m => m.question.startsWith('[DEMO]'))
-  const activeGoals = goals.filter(g => g.status === 'IN_PROGRESS' || g.status === 'PENDING')
+  const open = useMemo(() => markets.filter(m => m.status === 'OPEN'), [markets])
+  const resolved = useMemo(() => markets.filter(m => m.status === 'RESOLVED'), [markets])
+  const openIds = useMemo(() => open.map(m => m.id), [open])
+  const openBetSnapshots = useMarketBetsByIds(openIds)
+  const stakeByMarketId: Record<string, Record<string, number>> = {}
 
-  function handleEventClick(event: WsEvent) {
+  for (const [index, query] of openBetSnapshots.entries()) {
+    const marketId = openIds[index]
+    if (!marketId || !query.data?.stakeByOutcome) {
+      continue
+    }
+    stakeByMarketId[marketId] = query.data.stakeByOutcome
+  }
+
+  const hasDemoMarkets = useMemo(() => markets.some(m => m.question.startsWith('[DEMO]')), [markets])
+  const activeGoals = useMemo(() => goals.filter(g => g.status === 'IN_PROGRESS' || g.status === 'PENDING'), [goals])
+
+  const handleEventClick = useCallback((event: WsEvent) => {
     const p = event.payload as Record<string, unknown>
     if (typeof p.marketId === 'string') setSelectedMarketId(p.marketId)
     else if (typeof p.id === 'string' && event.type.startsWith('market')) setSelectedMarketId(p.id)
-  }
+  }, [])
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -160,8 +107,8 @@ export function Dashboard() {
         <section className="flex-1 overflow-y-auto px-8 py-6" style={{ borderRight: '1px solid var(--border)' }}>
           <p className="label mb-4">Active Markets</p>
           {isLoading && (
-            <div className="flex items-center justify-center py-16">
-              <span className="label">Loading…</span>
+            <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              {Array.from({ length: 4 }, (_, i) => <SkeletonCard key={i} />)}
             </div>
           )}
           {!isLoading && markets.length === 0 && (
@@ -174,6 +121,7 @@ export function Dashboard() {
               <MarketCard
                 key={market.id}
                 market={market}
+                stakeByOutcome={stakeByMarketId[market.id]}
                 onClick={() => setSelectedMarketId(market.id)}
               />
             ))}
@@ -182,8 +130,10 @@ export function Dashboard() {
 
         {/* Activity feed / Bot thread (40%) */}
         <aside style={{ width: 360, flexShrink: 0 }} className="flex flex-col">
-          <div className="flex items-center gap-0 px-2 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div role="tablist" className="flex items-center gap-0 px-2 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <button
+              role="tab"
+              aria-selected={sidebarTab === 'events'}
               onClick={() => setSidebarTab('events')}
               className="label text-xs px-4 py-1.5"
               style={{
@@ -198,6 +148,8 @@ export function Dashboard() {
               Live Events
             </button>
             <button
+              role="tab"
+              aria-selected={sidebarTab === 'thread'}
               onClick={() => setSidebarTab('thread')}
               className="label text-xs px-4 py-1.5"
               style={{

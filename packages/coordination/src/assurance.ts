@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createTopic, submitMessage, transferHbar } from "@simulacrum/core";
+import { createTopic, submitMessage, transferHbar, validateNonEmptyString, validatePositiveNumber } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getCoordinationStore, persistCoordinationStore, type CoordinationStore } from "./store.js";
@@ -30,18 +30,6 @@ export interface AssuranceOptions {
   client?: Client;
   store?: CoordinationStore;
   deps?: Partial<AssuranceDependencies>;
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new CoordinationError(`${field} must be a non-empty string.`);
-  }
-}
-
-function validatePositiveNumber(value: number, field: string): void {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new CoordinationError(`${field} must be a positive number.`);
-  }
 }
 
 function toCoordinationError(message: string, error: unknown): CoordinationError {

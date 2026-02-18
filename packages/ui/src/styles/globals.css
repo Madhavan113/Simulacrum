@@ -99,6 +99,17 @@
   .border-hair { border: 1px solid var(--border); }
 }
 
+@layer components {
+  .skeleton-pulse {
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 0.6; }
+}
+
 /* ── Animated background layers ── */
 .bg-layer-mosaic {
   animation: bg-drift-slow 60s ease-in-out infinite alternate;

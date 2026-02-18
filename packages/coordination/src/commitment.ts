@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createTopic, submitMessage } from "@simulacrum/core";
+import { createTopic, submitMessage, validateNonEmptyString, validatePositiveInteger } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getCoordinationStore, persistCoordinationStore, type CoordinationStore } from "./store.js";
@@ -27,18 +27,6 @@ export interface CommitmentOptions {
   client?: Client;
   store?: CoordinationStore;
   deps?: Partial<CommitmentDependencies>;
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new CoordinationError(`${field} must be a non-empty string.`);
-  }
-}
-
-function validatePositiveInteger(value: number, field: string): void {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new CoordinationError(`${field} must be a positive integer.`);
-  }
 }
 
 function toCoordinationError(message: string, error: unknown): CoordinationError {
@@ -121,6 +109,7 @@ export async function joinCommitment(
 
   if (Date.now() > Date.parse(commitment.deadline)) {
     commitment.status = "FAILED";
+    persistCoordinationStore(store);
     throw new CoordinationError(`Commitment ${commitmentId} deadline has passed.`);
   }
 

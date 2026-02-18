@@ -1,4 +1,4 @@
-import type { SchellingVote } from "./types.js";
+import { CoordinationError, type SchellingVote } from "./types.js";
 
 export interface SchellingResult {
   winningOption: string;
@@ -10,16 +10,16 @@ export interface SchellingResult {
 
 function validateVotes(votes: readonly SchellingVote[]): void {
   if (votes.length === 0) {
-    throw new Error("votes must include at least one vote.");
+    throw new CoordinationError("votes must include at least one vote.");
   }
 
   for (const vote of votes) {
     if (vote.option.trim().length === 0) {
-      throw new Error("vote.option must be non-empty.");
+      throw new CoordinationError("vote.option must be non-empty.");
     }
 
     if (!Number.isFinite(vote.weight) || vote.weight <= 0) {
-      throw new Error("vote.weight must be a positive number.");
+      throw new CoordinationError("vote.weight must be a positive number.");
     }
   }
 }

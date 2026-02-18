@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { transferHbar } from "@simulacrum/core";
+import { transferHbar, validateNonEmptyString, validatePositiveNumber } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { calculatePremium } from "./premiums.js";
@@ -16,18 +16,6 @@ export interface UnderwriteOptions {
   client?: Client;
   store?: InsuranceStore;
   deps?: Partial<UnderwriteDependencies>;
-}
-
-function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
-    throw new InsuranceError(`${field} must be a non-empty string.`);
-  }
-}
-
-function validatePositiveNumber(value: number, field: string): void {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new InsuranceError(`${field} must be a positive number.`);
-  }
 }
 
 function toInsuranceError(message: string, error: unknown): InsuranceError {
