@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useMemo, MutableRefObject } from 'react'
+import { useRef, useMemo, useEffect, MutableRefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { humanSilhouette, dnaHelix, chainLinks } from '../lib/shapes'
@@ -62,7 +62,7 @@ const vertexShader = /* glsl */`
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
     float baseSize = aSize * (1.0 + 0.3 * p);
-    gl_PointSize = baseSize * (220.0 / -mvPosition.z);
+    gl_PointSize = baseSize * (150.0 / max(-mvPosition.z, 0.1));
     gl_Position = projectionMatrix * mvPosition;
 
     float depthFade = smoothstep(-15.0, -2.0, mvPosition.z);
@@ -164,6 +164,10 @@ export function ParticleField({ progressRef }: ParticleFieldProps) {
     return { geometry: geo, uniforms: u }
   }, [])
 
+  useEffect(() => {
+    return () => { geometry.dispose() }
+  }, [geometry])
+
   useFrame((state) => {
     if (!materialRef.current) return
     materialRef.current.uniforms.uTime.value      = state.clock.elapsedTime
@@ -171,7 +175,7 @@ export function ParticleField({ progressRef }: ParticleFieldProps) {
   })
 
   return (
-    <points geometry={geometry}>
+    <points geometry={geometry} frustumCulled={false}>
       <shaderMaterial
         ref={materialRef}
         vertexShader={vertexShader}
