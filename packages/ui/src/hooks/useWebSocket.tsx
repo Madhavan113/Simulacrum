@@ -9,7 +9,7 @@ import {
 } from 'react'
 import type { WsEvent } from '../api/types'
 
-type WsStatus = 'connecting' | 'connected' | 'disconnected'
+export type WsStatus = 'connecting' | 'connected' | 'disconnected'
 
 interface WsContextValue {
   status: WsStatus
@@ -74,6 +74,7 @@ export function WebSocketProvider({ queryClient, children }: WebSocketProviderPr
 
   useEffect(() => {
     let reconnectTimer: ReturnType<typeof setTimeout>
+    let destroyed = false
 
     function connect() {
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
@@ -96,7 +97,7 @@ export function WebSocketProvider({ queryClient, children }: WebSocketProviderPr
 
       ws.onclose = () => {
         setStatus('disconnected')
-        reconnectTimer = setTimeout(connect, 3000)
+        if (!destroyed) reconnectTimer = setTimeout(connect, 3000)
       }
 
       ws.onerror = () => ws.close()
@@ -105,6 +106,7 @@ export function WebSocketProvider({ queryClient, children }: WebSocketProviderPr
     connect()
 
     return () => {
+      destroyed = true
       clearTimeout(reconnectTimer)
       wsRef.current?.close()
     }
