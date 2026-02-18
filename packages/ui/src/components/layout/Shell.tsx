@@ -1,2 +1,13 @@
 import { Outlet } from 'react-router-dom'
-export function Shell() { return <div className="min-h-screen bg-base"><Outlet /></div> }
+import { Nav } from './Nav'
+
+export function Shell() {
+  return (
+    <div className="flex min-h-screen" style={{ background: 'var(--bg-base)' }}>
+      <Nav />
+      <main className="flex-1" style={{ marginLeft: 220 }}>
+        <Outlet />
+      </main>
+    </div>
+  )
+}
