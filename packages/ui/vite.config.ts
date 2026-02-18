@@ -11,6 +11,7 @@ export default defineConfig({
       '/reputation': 'http://localhost:3001',
       '/autonomy': 'http://localhost:3001',
       '/health': 'http://localhost:3001',
+      '/insurance': 'http://localhost:3001',
       '/ws': { target: 'ws://localhost:3001', ws: true },
     },
   },
