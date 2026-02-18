@@ -11,7 +11,7 @@ gsap.registerPlugin(ScrollTrigger)
 
 function CameraRig({ progressRef }: { progressRef: MutableRefObject<number> }) {
   useFrame(({ camera, clock }) => {
-    const p = progressRef.current
+    const p = Math.min(Math.max(progressRef.current, 0), 1)
     const t = clock.elapsedTime
     // Push in: z from 7 → 4.5
     camera.position.z = 7 - p * 2.5
@@ -64,7 +64,7 @@ export default function HeroVoid() {
       >
         <Canvas
           camera={{ position: [0, 0, 7], fov: 60, near: 0.1, far: 100 }}
-          dpr={Math.min(window.devicePixelRatio, 2)}
+          dpr={typeof window !== 'undefined' ? Math.min(window.devicePixelRatio, 2) : 1}
           gl={{
             antialias: false,
             alpha: false,
