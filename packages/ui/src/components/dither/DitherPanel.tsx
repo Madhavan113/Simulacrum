@@ -28,13 +28,6 @@ export function DitherPanel({
     const container = containerRef.current
     if (!canvas || !container) return
 
-    const observer = new ResizeObserver(() => {
-      canvas.width = container.offsetWidth
-      canvas.height = container.offsetHeight
-      render()
-    })
-    observer.observe(container)
-
     function render() {
       let p = patternProp
       let i = intensityProp ?? 0.5
@@ -46,7 +39,18 @@ export function DitherPanel({
       fillDitherMosaic(canvas!, p ?? 'bayer4', i, tileSize)
     }
 
+    // Set initial dimensions synchronously before observe
+    canvas.width = container.offsetWidth
+    canvas.height = container.offsetHeight
     render()
+
+    const observer = new ResizeObserver(() => {
+      canvas.width = container.offsetWidth
+      canvas.height = container.offsetHeight
+      render()
+    })
+    observer.observe(container)
+
     return () => observer.disconnect()
   }, [value, patternProp, intensityProp, tileSize])
 

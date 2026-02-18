@@ -22,18 +22,39 @@ export function MacroblockReveal({ active, onDone, className = '' }: MacroblockR
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number>(0)
 
+  // Fix 3: ResizeObserver sizing effect — keeps canvas pixel dims equal to parent
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const parent = canvas.parentElement
+    if (!parent) return
+    const obs = new ResizeObserver(() => {
+      canvas.width = parent.offsetWidth
+      canvas.height = parent.offsetHeight
+    })
+    obs.observe(parent)
+    canvas.width = parent.offsetWidth
+    canvas.height = parent.offsetHeight
+    return () => obs.disconnect()
+  }, [])
+
+  // Fix 2: animation effect with mounted guard and no unsafe cast
   useEffect(() => {
     if (!active) return
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
-    if (!ctx) return
+    const ctxOrNull = canvas.getContext('2d')
+    if (!ctxOrNull) return
+    const ctx: CanvasRenderingContext2D = ctxOrNull
 
+    let mounted = true
+
+    // Read W/H at animation start (after sizing effect has run)
     const W = canvas.width
     const H = canvas.height
 
-    const T_SNAP    = 150
-    const T_SUBDIV  = 350
+    const T_SNAP     = 150
+    const T_SUBDIV   = 350
     const T_DISSOLVE = 450
 
     const startTime = performance.now()
@@ -64,7 +85,8 @@ export function MacroblockReveal({ active, onDone, className = '' }: MacroblockR
         ctx.beginPath()
         ctx.rect(tx, b.y, b.size, b.size)
         ctx.clip()
-        drawDitherTile(ctx, tx, b.y, b.size, b.pattern, b.intensity)
+        // Updated call: pass w and h separately to match new drawDitherTile signature
+        drawDitherTile(ctx, tx, b.y, b.size, b.size, b.pattern, b.intensity)
         ctx.restore()
       }
       ctx.globalAlpha = 1
@@ -93,7 +115,7 @@ export function MacroblockReveal({ active, onDone, className = '' }: MacroblockR
       } else {
         ctx.clearRect(0, 0, W, H)
         cancelAnimationFrame(rafRef.current)
-        onDone?.()
+        if (mounted) onDone?.()
         return
       }
 
@@ -101,16 +123,17 @@ export function MacroblockReveal({ active, onDone, className = '' }: MacroblockR
     }
 
     rafRef.current = requestAnimationFrame(frame)
-    return () => cancelAnimationFrame(rafRef.current)
+    return () => {
+      mounted = false
+      cancelAnimationFrame(rafRef.current)
+    }
   }, [active, onDone])
 
   return (
     <canvas
       ref={canvasRef}
-      width={typeof window !== 'undefined' ? window.innerWidth : 1440}
-      height={typeof window !== 'undefined' ? window.innerHeight : 900}
-      className={`pointer-events-none absolute inset-0 z-50 ${className}`}
-      style={{ display: active ? 'block' : 'none' }}
+      className={`pointer-events-none absolute inset-0 ${className}`}
+      style={{ display: active ? 'block' : 'none', width: '100%', height: '100%' }}
     />
   )
 }
