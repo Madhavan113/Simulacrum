@@ -1,8 +1,8 @@
-# AgentBets UI Implementation Plan
+# Simulacrum UI Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Build `packages/ui` — a production Vite + React 18 SPA that is the operator interface for AgentBets, wired to the real `packages/api` Express server.
+**Goal:** Build `packages/ui` — a production Vite + React 18 SPA that is the operator interface for Simulacrum, wired to the real `packages/api` Express server.
 
 **Architecture:** Vite dev server proxies all API calls and the `/ws` WebSocket to `localhost:3001`. TanStack Query owns all server state; a single `useWebSocket` hook drives cache invalidation from real-time events. The visual identity is black-first with ordered dither mosaics, CRT scanlines, and a canvas-based macroblock reveal transition.
 
@@ -26,7 +26,7 @@
 
 ```json
 {
-  "name": "@agentbets/ui",
+  "name": "@simulacrum/ui",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -151,7 +151,7 @@ export default {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AgentBets</title>
+    <title>Simulacrum</title>
   </head>
   <body>
     <div id="root"></div>
@@ -180,7 +180,7 @@ createRoot(document.getElementById('root')!).render(
 
 ```tsx
 export default function App() {
-  return <div className="bg-base min-h-screen text-primary">AgentBets</div>
+  return <div className="bg-base min-h-screen text-primary">Simulacrum</div>
 }
 ```
 
@@ -192,7 +192,7 @@ pnpm install
 pnpm dev
 ```
 
-Expected: Vite starts at `http://localhost:5173`, page renders "AgentBets" on a dark background. No TypeScript errors.
+Expected: Vite starts at `http://localhost:5173`, page renders "Simulacrum" on a dark background. No TypeScript errors.
 
 **Step 10: Commit**
 
@@ -1190,7 +1190,7 @@ export function Nav() {
           className="label"
           style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--text-primary)' }}
         >
-          AGENTBETS
+          SIMULACRUM
         </span>
         {/* WS status dot */}
         <span
@@ -2577,7 +2577,7 @@ Expected: 0 errors.
 
 ```bash
 cd /Users/madhavanp/Downloads/hederamarkets/ethdenver
-pnpm --filter @agentbets/api dev
+pnpm --filter @simulacrum/api dev
 ```
 
 Expected: Express server starts on port 3001.
@@ -2595,7 +2595,7 @@ Expected: Vite starts on port 5173, no console errors.
 
 Open `http://localhost:5173` and confirm:
 
-- [ ] Nav sidebar renders with AGENTBETS wordmark and dither strips
+- [ ] Nav sidebar renders with SIMULACRUM wordmark and dither strips
 - [ ] WS dot appears (coral when API is running, dim when not)
 - [ ] Dashboard: stat tiles with hatch dither background visible
 - [ ] Dashboard: market grid renders (or empty dither skeleton if no markets)
@@ -2621,7 +2621,7 @@ Expected: `dist/` produced, no TypeScript or Vite errors.
 ```bash
 cd /Users/madhavanp/Downloads/hederamarkets/ethdenver
 git add packages/ui/
-git commit -m "feat(ui): complete AgentBets operator UI — all 4 pages, dither system, MacroblockReveal"
+git commit -m "feat(ui): complete Simulacrum operator UI — all 4 pages, dither system, MacroblockReveal"
 ```
 
 ---

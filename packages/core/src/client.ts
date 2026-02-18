@@ -6,6 +6,7 @@ export interface HederaClientConfig {
   network: HederaNetwork;
   accountId?: string;
   privateKey?: string;
+  privateKeyType?: "auto" | "ecdsa" | "ed25519" | "der";
 }
 
 export class HederaClientError extends Error {
@@ -16,6 +17,78 @@ export class HederaClientError extends Error {
 }
 
 let clientInstance: Client | null = null;
+
+function stripHexPrefix(value: string): string {
+  return value.startsWith("0x") || value.startsWith("0X") ? value.slice(2) : value;
+}
+
+function isHex(value: string): boolean {
+  return /^[0-9A-Fa-f]+$/.test(value);
+}
+
+function parsePrivateKey(
+  privateKey: string,
+  privateKeyType: HederaClientConfig["privateKeyType"] = "auto"
+): PrivateKey {
+  const rawValue = privateKey.trim();
+  const normalized = stripHexPrefix(rawValue);
+
+  const parseAsEcdsa = (): PrivateKey => PrivateKey.fromStringECDSA(normalized);
+  const parseAsEd25519 = (): PrivateKey => PrivateKey.fromStringED25519(normalized);
+  const parseAsDer = (): PrivateKey => PrivateKey.fromStringDer(normalized);
+
+  if (privateKeyType === "ecdsa") {
+    return parseAsEcdsa();
+  }
+
+  if (privateKeyType === "ed25519") {
+    return parseAsEd25519();
+  }
+
+  if (privateKeyType === "der") {
+    return parseAsDer();
+  }
+
+  const attempts: Array<() => PrivateKey> = [];
+
+  if (isHex(normalized)) {
+    if (normalized.startsWith("302e") || normalized.startsWith("3030")) {
+      attempts.push(parseAsDer);
+    }
+
+    if (rawValue.startsWith("0x") || rawValue.startsWith("0X")) {
+      attempts.push(parseAsEcdsa, parseAsEd25519);
+    } else if (normalized.length === 64) {
+      attempts.push(parseAsEcdsa, parseAsEd25519);
+    } else {
+      attempts.push(parseAsDer);
+    }
+  }
+
+  attempts.push(() => PrivateKey.fromString(rawValue));
+
+  const seen = new Set<string>();
+
+  for (const attempt of attempts) {
+    const key = attempt.toString();
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+
+    try {
+      return attempt();
+    } catch {
+      // Try next format.
+    }
+  }
+
+  throw new HederaClientError(
+    "Unable to parse HEDERA_PRIVATE_KEY. Set HEDERA_PRIVATE_KEY_TYPE to ecdsa, ed25519, or der if needed."
+  );
+}
 
 function parseNetwork(network: string | undefined): HederaNetwork {
   const normalized = (network ?? "testnet").toLowerCase();
@@ -52,6 +125,10 @@ export function createHederaClient(
     const network = parseNetwork(overrides.network ?? process.env.HEDERA_NETWORK);
     const accountId = overrides.accountId ?? process.env.HEDERA_ACCOUNT_ID;
     const privateKey = overrides.privateKey ?? process.env.HEDERA_PRIVATE_KEY;
+    const privateKeyType =
+      overrides.privateKeyType ??
+      (process.env.HEDERA_PRIVATE_KEY_TYPE as HederaClientConfig["privateKeyType"] | undefined) ??
+      "auto";
 
     const client = clientForNetwork(network);
 
@@ -63,7 +140,7 @@ export function createHederaClient(
 
     if (accountId && privateKey) {
       const parsedAccountId = AccountId.fromString(accountId);
-      const parsedPrivateKey = PrivateKey.fromString(privateKey);
+      const parsedPrivateKey = parsePrivateKey(privateKey, privateKeyType);
       client.setOperator(parsedAccountId, parsedPrivateKey);
     }
 

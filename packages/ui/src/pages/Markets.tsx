@@ -56,7 +56,7 @@ export function Markets() {
             borderBottom: '1px solid var(--border)',
           }}
         >
-          {['Question', 'Status', 'Odds', 'Creator', 'Closes'].map(h => (
+          {['Question', 'Status', 'Odds', 'Creator', 'Resolves'].map(h => (
             <span key={h} className="label" style={{ fontSize: 10 }}>{h}</span>
           ))}
         </div>

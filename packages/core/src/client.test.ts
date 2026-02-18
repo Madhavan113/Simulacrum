@@ -15,6 +15,7 @@ afterEach(() => {
   delete process.env.HEDERA_NETWORK;
   delete process.env.HEDERA_ACCOUNT_ID;
   delete process.env.HEDERA_PRIVATE_KEY;
+  delete process.env.HEDERA_PRIVATE_KEY_TYPE;
   resetHederaClientForTests();
 });
 
@@ -44,6 +45,16 @@ describe("createHederaClient", () => {
   it("sets operator from environment when account and private key are both present", () => {
     process.env.HEDERA_ACCOUNT_ID = "0.0.1001";
     process.env.HEDERA_PRIVATE_KEY = PrivateKey.generateED25519().toStringDer();
+
+    const client = createHederaClient();
+
+    expect(client.operatorAccountId?.toString()).toBe("0.0.1001");
+  });
+
+  it("supports raw ECDSA keys with 0x prefix", () => {
+    process.env.HEDERA_ACCOUNT_ID = "0.0.1001";
+    process.env.HEDERA_PRIVATE_KEY = `0x${PrivateKey.generateECDSA().toStringRaw()}`;
+    process.env.HEDERA_PRIVATE_KEY_TYPE = "ecdsa";
 
     const client = createHederaClient();
 

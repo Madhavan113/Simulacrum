@@ -13,6 +13,15 @@ export function useMarket(id: string) {
   })
 }
 
+export function useMarketBets(id: string) {
+  return useQuery({
+    queryKey: ['market-bets', id],
+    queryFn: () => marketsApi.bets(id),
+    enabled: Boolean(id),
+    refetchInterval: 15_000,
+  })
+}
+
 export function useOrderBook(id: string) {
   return useQuery({
     queryKey: ['orderbook', id],

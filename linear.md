@@ -1,4 +1,4 @@
-# AgentBets - Linear Ticket Templates
+# Simulacrum - Linear Ticket Templates
 
 Use these templates when creating tickets in Linear for parallel agent development.
 

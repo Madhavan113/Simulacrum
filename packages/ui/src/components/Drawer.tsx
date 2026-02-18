@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { MacroblockReveal } from './dither/MacroblockReveal'
+import { useEffect, type ReactNode } from 'react'
 
 interface DrawerProps {
   open: boolean
@@ -9,21 +8,6 @@ interface DrawerProps {
 }
 
 export function Drawer({ open, onClose, children, width = 480 }: DrawerProps) {
-  const [revealing, setRevealing] = useState(false)
-  const [contentVisible, setContentVisible] = useState(false)
-  const prevOpen = useRef(false)
-
-  useEffect(() => {
-    if (open && !prevOpen.current) {
-      setRevealing(true)
-      setContentVisible(false)
-    }
-    if (!open) {
-      setContentVisible(false)
-    }
-    prevOpen.current = open
-  }, [open])
-
   // Close on Escape — only when drawer is open
   useEffect(() => {
     if (!open) return
@@ -34,7 +18,7 @@ export function Drawer({ open, onClose, children, width = 480 }: DrawerProps) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [open, onClose])
 
-  if (!open && !revealing) return null
+  if (!open) return null
 
   return (
     <>
@@ -52,24 +36,12 @@ export function Drawer({ open, onClose, children, width = 480 }: DrawerProps) {
           width,
           background: 'var(--bg-surface)',
           borderColor: 'var(--border)',
-          transform: open ? 'translateX(0)' : `translateX(${width}px)`,
+          transform: 'translateX(0)',
           transition: 'transform 0.25s linear',
         }}
       >
-        {/* Macroblock reveal canvas — covers the drawer on open */}
-        <MacroblockReveal
-          active={revealing}
-          onDone={() => {
-            setRevealing(false)
-            setContentVisible(true)
-          }}
-        />
-
-        {/* Content — visible after reveal completes */}
-        <div
-          className="flex flex-col h-full overflow-y-auto"
-          style={{ opacity: contentVisible ? 1 : 0, transition: 'opacity 0.1s linear' }}
-        >
+        {/* Content */}
+        <div className="flex flex-col h-full overflow-y-auto">
           {/* Close button */}
           <button
             onClick={onClose}

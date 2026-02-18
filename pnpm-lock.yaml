@@ -17,10 +17,10 @@ importers:
 
   packages/agents:
     dependencies:
-      '@agentbets/markets':
+      '@simulacrum/markets':
         specifier: workspace:*
         version: link:../markets
-      '@agentbets/reputation':
+      '@simulacrum/reputation':
         specifier: workspace:*
         version: link:../reputation
     devDependencies:
@@ -30,22 +30,22 @@ importers:
 
   packages/api:
     dependencies:
-      '@agentbets/agents':
+      '@simulacrum/agents':
         specifier: workspace:*
         version: link:../agents
-      '@agentbets/coordination':
+      '@simulacrum/coordination':
         specifier: workspace:*
         version: link:../coordination
-      '@agentbets/core':
+      '@simulacrum/core':
         specifier: workspace:*
         version: link:../core
-      '@agentbets/insurance':
+      '@simulacrum/insurance':
         specifier: workspace:*
         version: link:../insurance
-      '@agentbets/markets':
+      '@simulacrum/markets':
         specifier: workspace:*
         version: link:../markets
-      '@agentbets/reputation':
+      '@simulacrum/reputation':
         specifier: workspace:*
         version: link:../reputation
       express:
@@ -76,7 +76,7 @@ importers:
 
   packages/coordination:
     dependencies:
-      '@agentbets/core':
+      '@simulacrum/core':
         specifier: workspace:*
         version: link:../core
       '@hashgraph/sdk':
@@ -99,7 +99,7 @@ importers:
 
   packages/insurance:
     dependencies:
-      '@agentbets/core':
+      '@simulacrum/core':
         specifier: workspace:*
         version: link:../core
       '@hashgraph/sdk':
@@ -112,7 +112,7 @@ importers:
 
   packages/markets:
     dependencies:
-      '@agentbets/core':
+      '@simulacrum/core':
         specifier: workspace:*
         version: link:../core
       '@hashgraph/sdk':
@@ -125,7 +125,7 @@ importers:
 
   packages/reputation:
     dependencies:
-      '@agentbets/core':
+      '@simulacrum/core':
         specifier: workspace:*
         version: link:../core
       '@hashgraph/sdk':

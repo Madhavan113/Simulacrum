@@ -1,22 +1,33 @@
-import type { Market } from '../api/types'
-import { DitherPanel } from './dither/DitherPanel'
+import type { Market, OrderBookSnapshot } from '../api/types'
+import { computeImpliedOdds } from '../utils/odds'
 import { OddsBar } from './OddsBar'
 
 interface MarketCardProps {
   market: Market
-  /** 0–1 normalized volume for dither encoding */
-  volumeNorm: number
+  /** 0–1 normalized volume */
+  volumeNorm?: number
   onClick?: () => void
   horizontal?: boolean
+  orderBook?: OrderBookSnapshot | null
 }
 
-export function MarketCard({ market, volumeNorm, onClick, horizontal = false }: MarketCardProps) {
-  const closesAt = new Date(market.closeTime)
-  const isExpired = closesAt < new Date()
-  const fakeCount = market.outcomes.reduce<Record<string, number>>((acc, o, i) => {
-    acc[o] = i === 0 ? 60 : 40
-    return acc
-  }, {})
+export function MarketCard({ market, onClick, horizontal = false, orderBook }: MarketCardProps) {
+  const resolvesAt = new Date(market.closeTime)
+  const msUntilResolution = resolvesAt.getTime() - Date.now()
+  const resolutionLabel =
+    market.status === 'RESOLVED'
+      ? 'resolved'
+      : msUntilResolution <= 0
+        ? 'resolution pending'
+        : msUntilResolution < 60 * 60 * 1000
+          ? `resolves in ${Math.max(1, Math.round(msUntilResolution / (60 * 1000)))}m`
+          : `resolves in ${Math.max(1, Math.round(msUntilResolution / (60 * 60 * 1000)))}h`
+  const odds = computeImpliedOdds({
+    outcomes: market.outcomes,
+    orderBook,
+    initialOddsByOutcome: market.initialOddsByOutcome,
+    resolvedOutcome: market.resolvedOutcome,
+  })
 
   if (horizontal) {
     return (
@@ -28,13 +39,13 @@ export function MarketCard({ market, volumeNorm, onClick, horizontal = false }: 
         <span className="flex-1 text-sm font-medium text-primary truncate">{market.question}</span>
         <span className="status-badge shrink-0" data-status={market.status}>{market.status}</span>
         <div className="w-24 shrink-0">
-          <OddsBar outcomes={market.outcomes} counts={fakeCount} height={6} />
+          <OddsBar outcomes={market.outcomes} counts={odds} height={6} />
         </div>
         <span className="font-mono text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>
           {market.creatorAccountId.slice(0, 10)}…
         </span>
         <span className="label shrink-0" style={{ fontSize: 10 }}>
-          {isExpired ? 'CLOSED' : closesAt.toLocaleDateString()}
+          {resolutionLabel}
         </span>
       </button>
     )
@@ -52,7 +63,6 @@ export function MarketCard({ market, volumeNorm, onClick, horizontal = false }: 
         width: '100%',
       }}
     >
-      {/* Main content */}
       <div className="flex flex-col gap-3 p-4 flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm font-medium text-primary leading-snug">{market.question}</p>
@@ -65,7 +75,7 @@ export function MarketCard({ market, volumeNorm, onClick, horizontal = false }: 
               <span key={o} className="label" style={{ fontSize: 10 }}>{o}</span>
             ))}
           </div>
-          <OddsBar outcomes={market.outcomes} counts={fakeCount} height={8} />
+          <OddsBar outcomes={market.outcomes} counts={odds} height={8} />
         </div>
 
         <div className="flex items-center justify-between">
@@ -73,14 +83,9 @@ export function MarketCard({ market, volumeNorm, onClick, horizontal = false }: 
             {market.creatorAccountId}
           </span>
           <span className="label" style={{ fontSize: 10 }}>
-            {isExpired ? 'expired' : `closes ${closesAt.toLocaleDateString()}`}
+            {resolutionLabel}
           </span>
         </div>
-      </div>
-
-      {/* Dither strip — right edge, encodes volume */}
-      <div className="shrink-0 scanline-zone" style={{ width: 100 }}>
-        <DitherPanel value={volumeNorm} width={100} height="100%" />
       </div>
     </button>
   )

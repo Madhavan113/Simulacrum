@@ -1,5 +1,4 @@
 import type { Agent } from '../api/types'
-import { DitherPanel } from './dither/DitherPanel'
 
 interface AgentCardProps {
   agent: Agent
@@ -8,8 +7,6 @@ interface AgentCardProps {
 }
 
 export function AgentCard({ agent, rank, onClick }: AgentCardProps) {
-  const repNorm = agent.reputationScore / 100
-
   return (
     <button
       onClick={onClick}
@@ -22,17 +19,9 @@ export function AgentCard({ agent, rank, onClick }: AgentCardProps) {
         width: '100%',
       }}
     >
-      {/* Corner dither patch — top-right, encodes rep */}
-      <div
-        className="absolute top-0 right-0"
-        style={{ width: 60, height: 60 }}
-      >
-        <DitherPanel value={repNorm} width={60} height={60} />
-      </div>
-
       <div className="flex flex-col gap-2 p-4">
         {/* Name row */}
-        <div className="flex items-center gap-2 pr-14">
+        <div className="flex items-center gap-2">
           {rank !== undefined && (
             <span className="label" style={{ fontSize: 10, color: 'var(--accent)' }}>
               #{rank}

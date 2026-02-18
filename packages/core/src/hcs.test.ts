@@ -42,7 +42,7 @@ describe("createTopic", () => {
       }) as never
     );
 
-    const result = await createTopic("AgentBets market events", undefined, {
+    const result = await createTopic("Simulacrum market events", undefined, {
       client: buildClient()
     });
 

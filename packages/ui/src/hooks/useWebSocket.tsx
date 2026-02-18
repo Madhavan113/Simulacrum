@@ -31,33 +31,119 @@ interface WebSocketProviderProps {
   children: ReactNode
 }
 
+function toWebSocketUrl(raw: string): string {
+  const trimmed = raw.trim()
+  if (trimmed.startsWith('ws://') || trimmed.startsWith('wss://')) {
+    return trimmed
+  }
+  if (trimmed.startsWith('http://')) {
+    return `ws://${trimmed.slice('http://'.length)}`
+  }
+  if (trimmed.startsWith('https://')) {
+    return `wss://${trimmed.slice('https://'.length)}`
+  }
+  return trimmed
+}
+
+function resolveWebSocketCandidates(): string[] {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const sameOrigin = `${protocol}://${window.location.host}/ws`
+  const configured = import.meta.env.VITE_WS_URL
+    ? toWebSocketUrl(import.meta.env.VITE_WS_URL as string)
+    : undefined
+  const isLocalhost =
+    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+  const urls = [
+    configured,
+    import.meta.env.DEV && isLocalhost ? `${protocol}://127.0.0.1:3001/ws` : undefined,
+    import.meta.env.DEV && isLocalhost ? `${protocol}://localhost:3001/ws` : undefined,
+    sameOrigin,
+  ].filter((value): value is string => Boolean(value))
+
+  return Array.from(new Set(urls))
+}
+
 // Events that should invalidate TanStack Query caches
 function invalidateFromEvent(queryClient: QueryClient, event: WsEvent) {
   const { type, payload } = event
   const p = payload as Record<string, unknown>
 
+  // Helper: invalidate market-related keys
+  function invalidateMarket() {
+    void queryClient.invalidateQueries({ queryKey: ['markets'] })
+    if (p.marketId) {
+      void queryClient.invalidateQueries({ queryKey: ['markets', p.marketId] })
+      void queryClient.invalidateQueries({ queryKey: ['market-bets', p.marketId] })
+      void queryClient.invalidateQueries({ queryKey: ['orderbook', p.marketId] })
+    }
+  }
+
   switch (type) {
+    // Core market events
     case 'market.created':
+    case 'autonomy.market.created':
+    case 'clawdbot.market.created':
       void queryClient.invalidateQueries({ queryKey: ['markets'] })
       break
+
     case 'market.bet':
+    case 'market.closed':
     case 'market.resolved':
     case 'market.claimed':
     case 'market.order':
-      void queryClient.invalidateQueries({ queryKey: ['markets'] })
-      if (p.marketId) {
-        void queryClient.invalidateQueries({ queryKey: ['markets', p.marketId] })
-        void queryClient.invalidateQueries({ queryKey: ['orderbook', p.marketId] })
-      }
+    case 'market.self_attested':
+    case 'market.challenged':
+    case 'market.oracle_vote':
+    case 'autonomy.bet.placed':
+    case 'autonomy.market.resolved':
+    case 'autonomy.market.claimed':
+    case 'clawdbot.bet.placed':
+    case 'clawdbot.order.placed':
+    case 'clawdbot.bet.external':
+    case 'clawdbot.market.resolved':
+    case 'clawdbot.resolve.external':
+    case 'clawdbot.market.claimed':
+      invalidateMarket()
       break
+
+    // Agent events
     case 'agent.created':
+    case 'autonomy.agent.created':
+    case 'clawdbot.spawned':
+    case 'clawdbot.joined':
       void queryClient.invalidateQueries({ queryKey: ['agents'] })
       break
+
+    // ClawDBot network lifecycle
+    case 'clawdbot.started':
+    case 'clawdbot.stopped':
+    case 'clawdbot.tick':
+    case 'clawdbot.goal.created':
+    case 'clawdbot.goal.updated':
+    case 'clawdbot.goal.completed':
+    case 'clawdbot.goal.failed':
+      void queryClient.invalidateQueries({ queryKey: ['clawdbots'] })
+      break
+
+    // Autonomy engine lifecycle
+    case 'autonomy.started':
+    case 'autonomy.stopped':
+    case 'autonomy.tick':
+      void queryClient.invalidateQueries({ queryKey: ['autonomy'] })
+      break
+
+    // Reputation
     case 'reputation.attested':
     case 'reputation.token.created':
       void queryClient.invalidateQueries({ queryKey: ['reputation'] })
       break
+
     default:
+      // Wildcard: any autonomy.market.* or clawdbot.market.* → invalidate markets
+      if (type.startsWith('autonomy.market') || type.startsWith('clawdbot.market')) {
+        invalidateMarket()
+      }
       break
   }
 }
@@ -66,6 +152,7 @@ export function WebSocketProvider({ queryClient, children }: WebSocketProviderPr
   const [status, setStatus] = useState<WsStatus>('connecting')
   const listenersRef = useRef<Set<(event: WsEvent) => void>>(new Set())
   const wsRef = useRef<WebSocket | null>(null)
+  const reconnectDelayMsRef = useRef(1_500)
 
   function subscribe(listener: (event: WsEvent) => void) {
     listenersRef.current.add(listener)
@@ -75,13 +162,29 @@ export function WebSocketProvider({ queryClient, children }: WebSocketProviderPr
   useEffect(() => {
     let reconnectTimer: ReturnType<typeof setTimeout>
     let destroyed = false
+    let candidateIndex = 0
 
     function connect() {
-      const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
-      const ws = new WebSocket(`${protocol}://${location.host}/ws`)
-      wsRef.current = ws
+      const candidates = resolveWebSocketCandidates()
+      const wsUrl = candidates[candidateIndex] ?? candidates[0]
 
-      ws.onopen = () => setStatus('connected')
+      if (!wsUrl) {
+        setStatus('disconnected')
+        if (!destroyed) reconnectTimer = setTimeout(connect, reconnectDelayMsRef.current)
+        return
+      }
+
+      setStatus('connecting')
+      const ws = new WebSocket(wsUrl)
+      wsRef.current = ws
+      let opened = false
+
+      ws.onopen = () => {
+        opened = true
+        candidateIndex = 0
+        reconnectDelayMsRef.current = 1_500
+        setStatus('connected')
+      }
 
       ws.onmessage = (msg: MessageEvent<string>) => {
         try {
@@ -96,8 +199,20 @@ export function WebSocketProvider({ queryClient, children }: WebSocketProviderPr
       }
 
       ws.onclose = () => {
+        if (!opened && candidateIndex < candidates.length - 1) {
+          candidateIndex += 1
+          connect()
+          return
+        }
+
         setStatus('disconnected')
-        if (!destroyed) reconnectTimer = setTimeout(connect, 3000)
+        if (!destroyed) {
+          reconnectTimer = setTimeout(() => {
+            candidateIndex = 0
+            connect()
+          }, reconnectDelayMsRef.current)
+          reconnectDelayMsRef.current = Math.min(reconnectDelayMsRef.current * 2, 10_000)
+        }
       }
 
       ws.onerror = () => ws.close()

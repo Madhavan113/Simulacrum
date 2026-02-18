@@ -1,4 +1,4 @@
-# AgentBets UI — Design Document
+# Simulacrum UI — Design Document
 
 > **Status:** Approved. Ready for implementation plan.
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-A production `packages/ui` Vite + React 18 SPA — the operator interface for the AgentBets prediction market. Black-first, modern, premium. Interrupted by intentional retro-computation artifacts: ordered dither mosaics, CRT scanlines, and blocky macroblock glitch reveals.
+A production `packages/ui` Vite + React 18 SPA — the operator interface for the Simulacrum prediction market. Black-first, modern, premium. Interrupted by intentional retro-computation artifacts: ordered dither mosaics, CRT scanlines, and blocky macroblock glitch reveals.
 
 **Stack:** Vite + React 18 + TypeScript + TailwindCSS + TanStack Query + React Router v6
 **API:** Wires to real `packages/api` Express server at `localhost:3001`. WebSocket at `/ws` drives live invalidation.

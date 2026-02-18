@@ -1,4 +1,6 @@
-# 🤖 AgentBets: Parallel Agent Development Context
+
+
+# 🤖 Simulacrum: Parallel Agent Development Context
 
 > **Copy this entire document into any Claude/AI agent's context to enable coordinated development.**
 
@@ -6,7 +8,7 @@
 
 ## 📋 PROJECT OVERVIEW
 
-**Project**: AgentBets - Autonomous Agent Prediction Markets on Hedera
+**Project**: Simulacrum - Autonomous Agent Prediction Markets on Hedera
 **Bounty**: $10,000 ETH Denver "Killer App for Agentic Society" (OpenClaw)
 **Deadline**: 5 days
 **Repo Structure**: Monorepo with feature modules
@@ -26,7 +28,7 @@ An agent-native prediction market where AI agents create, trade, and resolve mar
 ## 🏗️ ARCHITECTURE
 
 ```
-agentbets/
+simulacrum/
 ├── packages/
 │   ├── core/                    # Hedera SDK wrapper + primitives
 │   │   ├── src/
@@ -190,7 +192,7 @@ const tokenCreate = new TokenCreateTransaction()
 
 // NFT (Agent identity badges)
 const nftCreate = new TokenCreateTransaction()
-  .setTokenName("AgentBets Identity")
+  .setTokenName("Simulacrum Identity")
   .setTokenSymbol("AGENTID")
   .setTokenType(TokenType.NonFungibleUnique)
   .setSupplyType(TokenSupplyType.Finite)
@@ -208,7 +210,7 @@ import {
 
 // Create topic (for orderbook, audit trail, etc.)
 const topicCreate = new TopicCreateTransaction()
-  .setTopicMemo("AgentBets Market: BTC>100k")
+  .setTopicMemo("Simulacrum Market: BTC>100k")
   .setSubmitKey(submitKey)
   .setAdminKey(adminKey);
 
@@ -591,7 +593,7 @@ Each feature should be developed as a standalone unit. Use these ticket definiti
 **Dependencies**: AGENT-001
 **Description**: OpenClaw SDK wrapper
 **Acceptance**:
-- [ ] OpenClaw agent can use AgentBets
+- [ ] OpenClaw agent can use Simulacrum
 - [ ] Tool definitions for OpenClaw
 - [ ] Event hooks
 
@@ -809,6 +811,11 @@ Pick a ticket, branch off main, ship it.
 
 ## 🧭 BACKEND INFRA WORKING LOG
 
+### Scope Boundary Rule
+- If the user explicitly says `backend`, only backend work is allowed and frontend files/packages must not be modified.
+- If the user explicitly says `frontend`, only frontend work is allowed and backend files/packages must not be modified.
+- When scope is explicit, treat cross-scope edits as blocked unless the user asks for an exception.
+
 ### 2026-02-17 (Current Session)
 - Scope locked to backend infrastructure only.
 - Completed baseline audit of monorepo status.
@@ -841,3 +848,42 @@ Pick a ticket, branch off main, ship it.
 - Next queued backend infra sprint items:
   - `MARKET-001` Create Market (depends on CORE-002, CORE-003)
   - `MARKET-002` Place Bet (depends on CORE-004)
+
+### 2026-02-18 (Autonomy Sprint)
+- Added autonomous orchestration engine in `packages/api/src/autonomy/engine.ts`:
+  - Auto-creates funded Hedera agent accounts
+  - Auto-creates challenge markets
+  - Auto-bets, resolves expired markets, and claims winnings
+- Added autonomy control routes in `packages/api/src/routes/autonomy.ts`:
+  - `GET /autonomy/status`
+  - `POST /autonomy/start`
+  - `POST /autonomy/stop`
+  - `POST /autonomy/run-now`
+  - `POST /autonomy/challenges`
+- Added fully autonomous runner CLI:
+  - `packages/api/src/cli/autonomous-runner.ts`
+  - root script: `pnpm infra:autonomous`
+- Added strict autonomous mode guard:
+  - `packages/api/src/middleware/autonomy-guard.ts`
+  - When enabled, non-`/autonomy` write operations are blocked (agent-only mutation model)
+- Added autonomous smoke automation:
+  - `packages/api/src/cli/autonomous-smoke.ts`
+  - root script: `pnpm infra:smoke:autonomous`
+  - Verifies autonomy bootstrap, strict-mode write blocking, and challenge creation
+- Added running ClawDBot network runtime:
+  - `packages/api/src/clawdbots/network.ts`
+  - Bots communicate over an internal message thread and create event markets via OpenClaw-style tool calls
+  - Bots autonomously discover markets, place bets, resolve expired markets, and settle claims
+- Added ClawDBot control API:
+  - `packages/api/src/routes/clawdbots.ts`
+  - `GET /clawdbots/status`
+  - `GET /clawdbots/thread`
+  - `GET /clawdbots/bots`
+  - `POST /clawdbots/join` for community bots
+  - `POST /clawdbots/start|stop|run-now`
+  - `POST /clawdbots/message`
+  - `POST /clawdbots/markets`
+  - `POST /clawdbots/bots/:botId/message|markets|bets|resolve`
+- Added ClawDBot runner command:
+  - `packages/api/src/cli/clawdbot-network-runner.ts`
+  - root script: `pnpm infra:clawdbots`

@@ -1,11 +1,20 @@
 {
-  "name": "agentbets",
+  "name": "simulacrum",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
+    "dev": "pnpm --filter @simulacrum/api run build && (pnpm --filter @simulacrum/api run infra:clawdbots & pnpm --filter @simulacrum/ui run dev & wait)",
     "build": "pnpm -r run build",
-    "test": "pnpm -r run test"
+    "test": "pnpm -r run test",
+    "smoke:api": "pnpm --filter @simulacrum/api run smoke",
+    "infra:reset": "pnpm --filter @simulacrum/api run build && pnpm --filter @simulacrum/api run infra:reset",
+    "infra:seed": "pnpm --filter @simulacrum/api run build && pnpm --filter @simulacrum/api run infra:seed",
+    "infra:smoke:live": "pnpm --filter @simulacrum/api run build && pnpm --filter @simulacrum/api run infra:smoke:live",
+    "infra:smoke:autonomous": "pnpm --filter @simulacrum/api run build && pnpm --filter @simulacrum/api run infra:smoke:autonomous",
+    "infra:demo": "pnpm --filter @simulacrum/api run build && pnpm --filter @simulacrum/api run infra:demo",
+    "infra:autonomous": "pnpm --filter @simulacrum/api run build && pnpm --filter @simulacrum/api run infra:autonomous",
+    "infra:clawdbots": "pnpm --filter @simulacrum/api run build && pnpm --filter @simulacrum/api run infra:clawdbots"
   },
   "devDependencies": {
     "typescript": "^5.7.3",

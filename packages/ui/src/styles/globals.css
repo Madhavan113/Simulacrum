@@ -98,3 +98,64 @@
 @layer utilities {
   .border-hair { border: 1px solid var(--border); }
 }
+
+/* ── Animated background layers ── */
+.bg-layer-mosaic {
+  animation: bg-drift-slow 60s ease-in-out infinite alternate;
+}
+
+.bg-layer-sculpture {
+  animation: bg-drift-med 45s ease-in-out infinite alternate-reverse;
+}
+
+.bg-layer-pixels {
+  animation: bg-drift-fast 35s ease-in-out infinite alternate;
+}
+
+@keyframes bg-drift-slow {
+  0%   { background-position: center center; }
+  100% { background-position: 48% 52%; }
+}
+
+@keyframes bg-drift-med {
+  0%   { background-position: 65% center; }
+  100% { background-position: 60% 55%; }
+}
+
+@keyframes bg-drift-fast {
+  0%   { background-position: -10% 20%; }
+  100% { background-position: -5% 25%; }
+}
+
+/* Film grain */
+.bg-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+  animation: grain-shift 0.5s steps(4) infinite;
+  mix-blend-mode: overlay;
+}
+
+@keyframes grain-shift {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(-2px, 3px); }
+  50%  { transform: translate(3px, -1px); }
+  75%  { transform: translate(-1px, -2px); }
+  100% { transform: translate(2px, 1px); }
+}
+
+/* Pulse glow for accent elements */
+@keyframes accent-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+/* Slow fade-in for background layers */
+@keyframes layer-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@simulacrum/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "smoke": "vitest run src/smoke.test.ts",
+    "infra:reset": "node dist/cli/reset-state.js",
+    "infra:seed": "node dist/cli/seed-demo.js --keep-running",
+    "infra:smoke:live": "node dist/cli/live-smoke.js",
+    "infra:smoke:autonomous": "node dist/cli/autonomous-smoke.js",
+    "infra:demo": "node dist/cli/demo-runner.js",
+    "infra:autonomous": "node dist/cli/autonomous-runner.js",
+    "infra:clawdbots": "node dist/cli/clawdbot-network-runner.js"
+  },
+  "dependencies": {
+    "@simulacrum/agents": "workspace:*",
+    "@simulacrum/coordination": "workspace:*",
+    "@simulacrum/core": "workspace:*",
+    "@simulacrum/insurance": "workspace:*",
+    "@simulacrum/markets": "workspace:*",
+    "@simulacrum/reputation": "workspace:*",
+    "express": "^4.21.2",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.13",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2"
+  }
+}
