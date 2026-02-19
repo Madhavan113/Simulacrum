@@ -27,16 +27,8 @@ export function Bots() {
   const startMut = useMutation({ mutationFn: clawdbotsApi.start, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['clawdbots'] }) })
   const stopMut = useMutation({ mutationFn: clawdbotsApi.stop, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['clawdbots'] }) })
   const runNowMut = useMutation({ mutationFn: clawdbotsApi.runNow, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['clawdbots'] }) })
-  const runDemoMut = useMutation({
-    mutationFn: clawdbotsApi.runDemoTimeline,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['clawdbots'] })
-      void queryClient.invalidateQueries({ queryKey: ['markets'] })
-    },
-  })
-
   const running = status?.running ?? false
-  const mutLoading = startMut.isPending || stopMut.isPending || runNowMut.isPending || runDemoMut.isPending
+  const mutLoading = startMut.isPending || stopMut.isPending || runNowMut.isPending
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -103,27 +95,6 @@ export function Bots() {
         >
           Run Now
         </button>
-        <button
-          onClick={() => runDemoMut.mutate()}
-          disabled={mutLoading}
-          className="label text-xs px-3 py-1"
-          title="Localhost-only backdoor. Requires DEMO_BACKDOOR_ENABLED=true"
-          style={{
-            background: '#2a2112',
-            color: '#ffb74d',
-            border: '1px solid #ffb74d',
-            borderRadius: 6,
-            cursor: mutLoading ? 'wait' : 'pointer',
-            opacity: mutLoading ? 0.5 : 1,
-          }}
-        >
-          Run Demo Timeline
-        </button>
-      </div>
-      <div className="px-8 py-2" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
-        <p className="label text-xs" style={{ color: '#ffb74d' }}>
-          DEMO BACKDOOR: localhost only, explicitly marked demo markets/events.
-        </p>
       </div>
 
       {/* Main body */}

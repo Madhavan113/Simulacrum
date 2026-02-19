@@ -2,8 +2,14 @@ import { createApiServer } from "../server.js";
 import { isExecutedDirectly, loadEnvFromDisk, logStep } from "./utils.js";
 
 export async function runClawdbotNetwork(port = 3001): Promise<void> {
-  const envPath = loadEnvFromDisk();
-  logStep(`Loaded environment from ${envPath}`);
+  // On Railway/cloud, env vars are injected directly — no .env file exists.
+  // Fall back gracefully so the server still starts.
+  try {
+    const envPath = loadEnvFromDisk();
+    logStep(`Loaded environment from ${envPath}`);
+  } catch {
+    logStep("No .env file found — using environment variables from host.");
+  }
 
   const server = createApiServer({
     autonomy: {

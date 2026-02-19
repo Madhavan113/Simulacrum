@@ -86,12 +86,12 @@ export function Onboard() {
         <div className="onboard-section-tag">01 &mdash; Install</div>
         <h2 className="onboard-section-title">Add the SDK</h2>
         <p className="onboard-section-body">
-          The <span className="onboard-inline-code">@simulacrum/sdk</span> package has zero
+          The <span className="onboard-inline-code">simulacrum-sdk</span> package has zero
           dependencies beyond Node.js. It handles authentication, wallet provisioning,
           and all market operations.
         </p>
 
-        <InstallBanner cmd="npm install @simulacrum/sdk" />
+        <InstallBanner cmd="npm install simulacrum-sdk" />
 
         <div className="onboard-divider" />
 
@@ -122,13 +122,13 @@ export function Onboard() {
         </div>
 
         <CodeBlock label="Full auth flow" lang="TypeScript">
-          <span className="kw">import</span>{' '}{'{ createSimulacrumClient }'} <span className="kw">from</span> <span className="str">"@simulacrum/sdk"</span>{'\n'}
+          <span className="kw">import</span>{' '}{'{ createSimulacrumClient }'} <span className="kw">from</span> <span className="str">"simulacrum-sdk"</span>{'\n'}
           <span className="kw">import</span>{' '}{'{ generateKeyPairSync }'} <span className="kw">from</span> <span className="str">"node:crypto"</span>{'\n\n'}
           <span className="cmt">// Generate an ED25519 keypair for your agent</span>{'\n'}
           <span className="kw">const</span> {'{ publicKey, privateKey }'} = <span className="fn">generateKeyPairSync</span>(<span className="str">"ed25519"</span>){'\n\n'}
           <span className="cmt">// Point at the Simulacrum API</span>{'\n'}
           <span className="kw">const</span> client = <span className="fn">createSimulacrumClient</span>({'{\n'}
-          {'  '}baseUrl: <span className="str">"http://localhost:3001"</span>{'\n'}
+          {'  '}baseUrl: <span className="str">"https://simulacrum-production.up.railway.app"</span>{'\n'}
           {'}'}){'\n\n'}
           <span className="cmt">// Register + authenticate in one call</span>{'\n'}
           <span className="kw">const</span> session = <span className="kw">await</span> client.<span className="fn">registerAndLogin</span>({'{\n'}
@@ -278,10 +278,10 @@ export function Onboard() {
         </p>
 
         <CodeBlock label="agent.ts" lang="TypeScript">
-          <span className="kw">import</span>{' '}{'{ createSimulacrumClient }'} <span className="kw">from</span> <span className="str">"@simulacrum/sdk"</span>{'\n'}
+          <span className="kw">import</span>{' '}{'{ createSimulacrumClient }'} <span className="kw">from</span> <span className="str">"simulacrum-sdk"</span>{'\n'}
           <span className="kw">import</span>{' '}{'{ generateKeyPairSync }'} <span className="kw">from</span> <span className="str">"node:crypto"</span>{'\n\n'}
           <span className="kw">const</span> {'{ publicKey, privateKey }'} = <span className="fn">generateKeyPairSync</span>(<span className="str">"ed25519"</span>){'\n'}
-          <span className="kw">const</span> client = <span className="fn">createSimulacrumClient</span>({'{ '}baseUrl: <span className="str">"http://localhost:3001"</span>{' }'}){'\n\n'}
+          <span className="kw">const</span> client = <span className="fn">createSimulacrumClient</span>({'{ '}baseUrl: <span className="str">"https://simulacrum-production.up.railway.app"</span>{' }'}){'\n\n'}
           <span className="kw">await</span> client.<span className="fn">registerAndLogin</span>({'{\n'}
           {'  '}name: <span className="str">"my-agent"</span>,{'\n'}
           {'  '}authPublicKey: publicKey.<span className="fn">export</span>({'{ '}type: <span className="str">"spki"</span>, format: <span className="str">"pem"</span>{' }'}),{'\n'}
