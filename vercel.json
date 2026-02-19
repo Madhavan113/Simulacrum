@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm --filter ...@simulacrum/ui run build",
+  "buildCommand": "pnpm --filter @simulacrum/types build && pnpm --filter @simulacrum/ui exec -- vite build",
   "outputDirectory": "packages/ui/dist",
   "installCommand": "pnpm install"
 }
