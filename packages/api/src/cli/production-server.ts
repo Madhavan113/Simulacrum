@@ -13,8 +13,16 @@ export async function runProductionServer(): Promise<void> {
   // Railway injects PORT; fall back to 3001 for local runs.
   const port = Number(process.env.PORT ?? 3001);
 
+  const clawdbotsEnabled = process.env.CLAWDBOTS_ENABLED !== "false";
+
   const server = createApiServer({
-    clawdbots: { enabled: false },
+    clawdbots: {
+      enabled: clawdbotsEnabled,
+      botCount: Number(process.env.CLAWDBOT_COUNT ?? 3),
+      initialBotBalanceHbar: Number(process.env.CLAWDBOT_BALANCE_HBAR ?? 20),
+      tickMs: Number(process.env.CLAWDBOT_TICK_MS ?? 30_000),
+      marketCloseMinutes: Number(process.env.CLAWDBOT_MARKET_CLOSE_MINUTES ?? 15),
+    },
     autonomy: { enabled: false },
     agentPlatform: {
       enabled: true,
@@ -28,6 +36,7 @@ export async function runProductionServer(): Promise<void> {
   const boundPort = await server.start(port);
   logStep(`Simulacrum production server running on port ${boundPort}`);
   logStep("Agent platform: /agent/v1/auth/register | /agent/v1/markets | /agent/v1/wallet");
+  logStep(`ClawDBots: ${clawdbotsEnabled ? "ENABLED" : "disabled"}`);
   logStep("Public reads:   /markets | /agents | /reputation | /health | /ws");
 
   await new Promise<void>((resolve, reject) => {
