@@ -177,8 +177,10 @@ export class LlmCognitionEngine {
     const model = this.#config.model ?? "gpt-4o-mini";
     const baseUrl = this.#config.baseUrl ?? "https://api.openai.com/v1";
     const prompt = [
-      "You are controlling a community prediction-market bot.",
-      "Produce a single concise goal with title and detail.",
+      "You are an autonomous prediction-market agent on the Simulacrum platform (Hedera blockchain).",
+      "Your role is to CREATE markets about real-world events, PLACE BETS on existing markets, and PUBLISH ORDERS to provide liquidity.",
+      "You must NEVER resolve markets — resolution is handled by market creators or oracle consensus only.",
+      "Produce a single concise goal with title and detail. Focus on market creation, betting, or liquidity provision.",
       "Return JSON only: {\"title\": string, \"detail\": string}.",
       `Bot: ${context.bot.name}`,
       `Open markets: ${context.markets.filter((market) => market.status === "OPEN").length}`
@@ -231,14 +233,21 @@ export class LlmCognitionEngine {
 
     const model = this.#config.model ?? "gpt-4o-mini";
     const baseUrl = this.#config.baseUrl ?? "https://api.openai.com/v1";
+    const openMarkets = context.markets.filter((m) => m.status === "OPEN");
+    const marketInfo = openMarkets.length > 0
+      ? openMarkets.map((m) => `${m.id}: "${m.question}" [${m.outcomes.join("/")}]`).join("; ")
+      : "none";
     const prompt = [
-      "You are controlling a community prediction-market bot.",
-      "Pick one action aligned to the goal.",
-      "Allowed action types: CREATE_MARKET, PUBLISH_ORDER, PLACE_BET, RESOLVE_MARKET, WAIT.",
+      "You are an autonomous prediction-market agent on the Simulacrum platform (Hedera blockchain).",
+      "Pick one action aligned to the goal. You must NEVER resolve markets — that is not your role.",
+      "Allowed action types: CREATE_MARKET, PUBLISH_ORDER, PLACE_BET, WAIT.",
+      "For CREATE_MARKET: provide a prompt (the market question about a real-world verifiable event) and initialOddsByOutcome.",
+      "For PLACE_BET: provide marketId, outcome, and amountHbar (1-5 HBAR).",
+      "For PUBLISH_ORDER: provide marketId, outcome, side (BID/ASK), quantity, and price (0.01-0.99).",
       "Return JSON only with fields:",
-      "{\"type\": string, \"marketId\"?: string, \"outcome\"?: string, \"side\"?: \"BID\"|\"ASK\", \"quantity\"?: number, \"price\"?: number, \"amountHbar\"?: number, \"prompt\"?: string, \"initialOddsByOutcome\"?: {\"OUTCOME\": number}, \"resolvedOutcome\"?: string, \"reason\"?: string, \"confidence\": number, \"rationale\": string}",
+      "{\"type\": string, \"marketId\"?: string, \"outcome\"?: string, \"side\"?: \"BID\"|\"ASK\", \"quantity\"?: number, \"price\"?: number, \"amountHbar\"?: number, \"prompt\"?: string, \"initialOddsByOutcome\"?: {\"OUTCOME\": number}, \"confidence\": number, \"rationale\": string}",
       `Goal: ${context.goal.title} - ${context.goal.detail}`,
-      `Open markets: ${context.markets.filter((market) => market.status === "OPEN").map((market) => market.id).join(",") || "none"}`
+      `Open markets: ${marketInfo}`
     ].join("\n");
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -278,7 +287,6 @@ export class LlmCognitionEngine {
       "CREATE_MARKET",
       "PUBLISH_ORDER",
       "PLACE_BET",
-      "RESOLVE_MARKET",
       "WAIT"
     ]);
 
