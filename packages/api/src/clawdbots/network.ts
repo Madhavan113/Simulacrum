@@ -407,8 +407,6 @@ export class ClawdbotNetwork {
   readonly #tickMs: number;
   readonly #targetBots: number;
   readonly #initialBotBalanceHbar: number;
-  readonly #marketEveryTicks: number;
-  readonly #minOpenMarkets: number;
   readonly #marketCloseMinutes: number;
   readonly #minBetHbar: number;
   readonly #maxBetHbar: number;
@@ -456,8 +454,6 @@ export class ClawdbotNetwork {
     this.#tickMs = options.tickMs ?? DEFAULT_TICK_MS;
     this.#targetBots = options.botCount ?? 3;
     this.#initialBotBalanceHbar = options.initialBotBalanceHbar ?? 25;
-    this.#marketEveryTicks = options.marketEveryTicks ?? 2;
-    this.#minOpenMarkets = options.minOpenMarkets ?? 2;
     this.#marketCloseMinutes = options.marketCloseMinutes ?? 20;
     this.#minBetHbar = options.minBetHbar ?? 1;
     this.#maxBetHbar = options.maxBetHbar ?? 4;
@@ -1440,12 +1436,7 @@ export class ClawdbotNetwork {
       this.#tickCount += 1;
       const now = new Date();
 
-      this.seedThreadMessage();
-
-      if (this.shouldCreateEventMarket()) {
-        await this.createEventMarket({});
-      }
-
+      // All market creation, betting, and orders are driven purely by LLM cognition
       await this.runDiscoveryAndBetting(now);
       await this.resolveExpiredMarkets(now);
       await this.settleResolvedMarkets();
@@ -1744,13 +1735,14 @@ export class ClawdbotNetwork {
       throw new Error("Unable to resolve creator bot.");
     }
 
-    const latestMessage = this.#thread[this.#thread.length - 1];
     const prompt = parseNonEmptyString(
       input.prompt,
-      latestMessage?.text
-        ? `Will event outcome hold for: "${latestMessage.text}"?`
-        : this.generateEventPrompt()
+      ""
     );
+
+    if (!prompt) {
+      throw new Error("Market prompt is required — no scripted fallback available.");
+    }
     const outcomes = parseOutcomes(input.outcomes);
     const resolvedOutcomes = outcomes ?? ["YES", "NO"];
     const initialOddsByOutcome =
@@ -1798,65 +1790,10 @@ export class ClawdbotNetwork {
     return { marketId };
   }
 
-  private seedThreadMessage(): void {
-    const bots = Array.from(this.#runtimeBots.values());
-
-    if (bots.length === 0) {
-      return;
-    }
-
-    const author = bots[Math.floor(Math.random() * bots.length)] ?? bots[0];
-
-    if (!author) {
-      return;
-    }
-
-    const text = this.generateMessageText(author.agent.name);
-    this.postMessage(text, author.agent.id);
-  }
-
-  private generateMessageText(authorName: string): string {
-    const promptPool = [
-      `${authorName}: signal update on latest challenge.`,
-      `${authorName}: forecasting execution risk at medium confidence.`,
-      `${authorName}: proposing a new measurable event market.`,
-      `${authorName}: observing momentum shift in current markets.`,
-      `${authorName}: requesting adversarial challenge from peers.`
-    ];
-
-    return promptPool[Math.floor(Math.random() * promptPool.length)] ?? `${authorName}: status update.`;
-  }
-
   private pause(ms: number): Promise<void> {
     return new Promise((resolve) => {
       setTimeout(resolve, ms);
     });
-  }
-
-  private generateEventPrompt(): string {
-    const prompts = [
-      "Will the proposer complete the task before deadline?",
-      "Will the challenger outperform peers in this round?",
-      "Will system uptime remain above 99% this cycle?",
-      "Will the next bot action increase aggregate confidence?"
-    ];
-
-    return prompts[Math.floor(Math.random() * prompts.length)] ?? "Will this event resolve positively?";
-  }
-
-  private shouldCreateEventMarket(): boolean {
-    if (this.#tickCount === 1) {
-      return true;
-    }
-
-    if (this.#tickCount % this.#marketEveryTicks === 0) {
-      return true;
-    }
-
-    const store = getMarketStore();
-    const openMarkets = Array.from(store.markets.values()).filter((market) => market.status === "OPEN").length;
-
-    return openMarkets < this.#minOpenMarkets;
   }
 
   private async ensureBotPopulation(): Promise<void> {
@@ -2037,7 +1974,11 @@ export class ClawdbotNetwork {
   private createAdapter(agent: BaseAgent, wallet: AgentWallet): OpenClawAdapter {
     return createOpenClawAdapter(agent, {
       createMarket: async (args) => {
-        const question = parseNonEmptyString(args.question, this.generateEventPrompt());
+        const question = parseNonEmptyString(args.question, "");
+
+        if (!question) {
+          throw new Error("Market question is required — no scripted fallback available.");
+        }
         const outcomes = parseOutcomes(args.outcomes);
         const resolvedOutcomes = outcomes ?? ["YES", "NO"];
         const initialOddsByOutcome =

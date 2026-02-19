@@ -67,70 +67,11 @@ function parseJson<T>(raw: string): T | null {
   }
 }
 
-function fallbackGoal(context: GoalContext): Pick<ClawdbotGoal, "title" | "detail"> {
-  if (context.markets.length === 0) {
-    return {
-      title: "Boot market liquidity",
-      detail: "Create an initial market so community bots can begin trading."
-    };
-  }
-
+function waitAction(reason: string): ClawdbotPlannedAction {
   return {
-    title: "Improve market depth",
-    detail: "Add two-sided liquidity across YES and NO with competitive spreads."
-  };
-}
-
-let fallbackActionCounter = 0;
-
-function fallbackAction(context: ActionContext): ClawdbotPlannedAction {
-  const open = context.markets.filter((market) => market.status === "OPEN");
-
-  if (open.length === 0) {
-    return {
-      type: "CREATE_MARKET",
-      prompt: `[GOAL] ${context.goal.title}: Will the next community milestone ship on schedule?`,
-      initialOddsByOutcome: { YES: 55, NO: 45 },
-      confidence: 0.75,
-      rationale: "No active markets found, so creating one is the highest leverage move."
-    };
-  }
-
-  const counter = fallbackActionCounter++;
-  const targetMarket = open[counter % open.length];
-  const outcomes = targetMarket?.outcomes ?? ["YES", "NO"];
-
-  // Rotate through outcome/side combinations to build two-sided depth
-  const configs: Array<{ outcome: string; side: "BID" | "ASK"; price: number }> = [];
-  for (const outcome of outcomes) {
-    configs.push({ outcome, side: "BID", price: 0.3 + Math.random() * 0.25 });
-    configs.push({ outcome, side: "ASK", price: 0.55 + Math.random() * 0.25 });
-  }
-
-  const pick = configs[counter % configs.length] ?? configs[0]!;
-
-  // Occasionally place a bet instead of an order for staked volume diversity
-  if (counter % 5 === 0) {
-    const betOutcome = outcomes[counter % outcomes.length] ?? "YES";
-    return {
-      type: "PLACE_BET",
-      marketId: targetMarket?.id,
-      outcome: betOutcome,
-      amountHbar: 1 + Math.floor(Math.random() * 3),
-      confidence: 0.6,
-      rationale: `Staking on ${betOutcome} to add volume and signal conviction.`
-    };
-  }
-
-  return {
-    type: "PUBLISH_ORDER",
-    marketId: targetMarket?.id,
-    outcome: pick.outcome,
-    side: pick.side,
-    quantity: 5 + Math.floor(Math.random() * 15),
-    price: Number(pick.price.toFixed(2)),
-    confidence: 0.66,
-    rationale: `Market-making ${pick.side} on ${pick.outcome} to build two-sided orderbook depth.`
+    type: "WAIT",
+    confidence: 0,
+    rationale: reason
   };
 }
 
@@ -143,14 +84,25 @@ export class LlmCognitionEngine {
 
   async generateGoal(context: GoalContext): Promise<ClawdbotGoal> {
     const now = new Date().toISOString();
-    const fallback = fallbackGoal(context);
     const result = await this.#askGoalModel(context);
+
+    if (!result) {
+      return {
+        id: randomUUID(),
+        botId: context.bot.id,
+        title: "Waiting for LLM",
+        detail: "LLM provider unavailable — skipping this tick.",
+        status: "PENDING",
+        createdAt: now,
+        updatedAt: now
+      };
+    }
 
     return {
       id: randomUUID(),
       botId: context.bot.id,
-      title: result?.title ?? fallback.title,
-      detail: result?.detail ?? fallback.detail,
+      title: result.title,
+      detail: result.detail,
       status: "PENDING",
       createdAt: now,
       updatedAt: now
@@ -164,7 +116,7 @@ export class LlmCognitionEngine {
       return result;
     }
 
-    return fallbackAction(context);
+    return waitAction("LLM provider unavailable — no scripted fallback, waiting for next tick.");
   }
 
   async #askGoalModel(context: GoalContext): Promise<{ title: string; detail: string } | null> {
@@ -177,10 +129,12 @@ export class LlmCognitionEngine {
     const model = this.#config.model ?? "gpt-4o-mini";
     const baseUrl = this.#config.baseUrl ?? "https://api.openai.com/v1";
     const prompt = [
-      "You are an autonomous prediction-market agent on the Simulacrum platform (Hedera blockchain).",
-      "Your role is to CREATE markets about real-world events, PLACE BETS on existing markets, and PUBLISH ORDERS to provide liquidity.",
-      "You must NEVER resolve markets — resolution is handled by market creators or oracle consensus only.",
-      "Produce a single concise goal with title and detail. Focus on market creation, betting, or liquidity provision.",
+      "You are an autonomous prediction-market degen on the Simulacrum platform (Hedera blockchain).",
+      "You have STRONG opinions. You talk trash about bad markets, call out weak bets, and flex on your wins.",
+      "Your role is to CREATE spicy markets about real-world events, PLACE bold BETS on existing markets, and PUBLISH ORDERS to provide liquidity.",
+      "You must NEVER resolve markets — resolution is handled by oracle consensus only.",
+      "Be opinionated and entertaining. Your goal titles should have personality — trash talk other positions, brag about your edge, or call out obvious mispricing.",
+      "Produce a single goal with title and detail. Focus on market creation, betting, or liquidity provision.",
       "Return JSON only: {\"title\": string, \"detail\": string}.",
       `Bot: ${context.bot.name}`,
       `Open markets: ${context.markets.filter((market) => market.status === "OPEN").length}`
@@ -238,12 +192,14 @@ export class LlmCognitionEngine {
       ? openMarkets.map((m) => `${m.id}: "${m.question}" [${m.outcomes.join("/")}]`).join("; ")
       : "none";
     const prompt = [
-      "You are an autonomous prediction-market agent on the Simulacrum platform (Hedera blockchain).",
+      "You are an autonomous prediction-market degen on the Simulacrum platform (Hedera blockchain).",
+      "You have STRONG opinions and you're not afraid to share them. Talk trash, call out bad odds, flex your edge.",
       "Pick one action aligned to the goal. You must NEVER resolve markets — that is not your role.",
       "Allowed action types: CREATE_MARKET, PUBLISH_ORDER, PLACE_BET, WAIT.",
-      "For CREATE_MARKET: provide a prompt (the market question about a real-world verifiable event) and initialOddsByOutcome.",
-      "For PLACE_BET: provide marketId, outcome, and amountHbar (1-5 HBAR).",
+      "For CREATE_MARKET: provide a prompt (the market question about a real-world verifiable event) and initialOddsByOutcome. Make market questions spicy and engaging.",
+      "For PLACE_BET: provide marketId, outcome, and amountHbar (1-5 HBAR). Go big or go home.",
       "For PUBLISH_ORDER: provide marketId, outcome, side (BID/ASK), quantity, and price (0.01-0.99).",
+      "Your rationale should be entertaining — trash talk other positions, brag about your conviction, roast bad pricing.",
       "Return JSON only with fields:",
       "{\"type\": string, \"marketId\"?: string, \"outcome\"?: string, \"side\"?: \"BID\"|\"ASK\", \"quantity\"?: number, \"price\"?: number, \"amountHbar\"?: number, \"prompt\"?: string, \"initialOddsByOutcome\"?: {\"OUTCOME\": number}, \"confidence\": number, \"rationale\": string}",
       `Goal: ${context.goal.title} - ${context.goal.detail}`,
