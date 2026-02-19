@@ -1,0 +1,6 @@
+{
+  "buildCommand": "pnpm --filter @simulacrum/ui... build",
+  "outputDirectory": "packages/ui/dist",
+  "installCommand": "pnpm install",
+  "framework": "vite"
+}

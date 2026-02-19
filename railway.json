@@ -5,7 +5,7 @@
     "buildCommand": "pnpm install && pnpm -r run build"
   },
   "deploy": {
-    "startCommand": "node packages/api/dist/cli/clawdbot-network-runner.js",
+    "startCommand": "node packages/api/dist/cli/production-server.js",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE"
   }
