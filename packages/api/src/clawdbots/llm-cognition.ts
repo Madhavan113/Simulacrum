@@ -59,9 +59,15 @@ interface ActionContext {
   markets: MarketSnapshot[];
 }
 
+function stripMarkdownFences(raw: string): string {
+  const trimmed = raw.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  return fenceMatch ? fenceMatch[1]!.trim() : trimmed;
+}
+
 function parseJson<T>(raw: string): T | null {
   try {
-    return JSON.parse(raw) as T;
+    return JSON.parse(stripMarkdownFences(raw)) as T;
   } catch {
     return null;
   }
@@ -123,11 +129,14 @@ export class LlmCognitionEngine {
     const apiKey = this.#config.apiKey;
 
     if (!apiKey) {
+      console.warn("[llm-cognition] No API key configured — skipping goal generation.");
       return null;
     }
 
     const model = this.#config.model ?? "gpt-4o-mini";
     const baseUrl = this.#config.baseUrl ?? "https://api.openai.com/v1";
+    const url = `${baseUrl}/chat/completions`;
+    console.log(`[llm-cognition] Goal request → ${url} model=${model}`);
     const prompt = [
       "You are an autonomous prediction-market degen on the Simulacrum platform (Hedera blockchain).",
       "You have STRONG opinions. You talk trash about bad markets, call out weak bets, and flex on your wins.",
@@ -140,7 +149,7 @@ export class LlmCognitionEngine {
       `Open markets: ${context.markets.filter((market) => market.status === "OPEN").length}`
     ].join("\n");
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -149,12 +158,14 @@ export class LlmCognitionEngine {
       body: JSON.stringify({
         model,
         temperature: 0.2,
-        response_format: { type: "json_object" },
+
         messages: [{ role: "user", content: prompt }]
       })
     });
 
     if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.error(`[llm-cognition] Goal LLM failed: HTTP ${response.status} ${response.statusText} — ${body}`);
       return null;
     }
 
@@ -182,15 +193,18 @@ export class LlmCognitionEngine {
     const apiKey = this.#config.apiKey;
 
     if (!apiKey) {
+      console.warn("[llm-cognition] No API key configured — skipping action decision.");
       return null;
     }
 
     const model = this.#config.model ?? "gpt-4o-mini";
     const baseUrl = this.#config.baseUrl ?? "https://api.openai.com/v1";
+    const url = `${baseUrl}/chat/completions`;
     const openMarkets = context.markets.filter((m) => m.status === "OPEN");
     const marketInfo = openMarkets.length > 0
       ? openMarkets.map((m) => `${m.id}: "${m.question}" [${m.outcomes.join("/")}]`).join("; ")
       : "none";
+    console.log(`[llm-cognition] Action request → ${url} model=${model} goal="${context.goal.title}"`);
     const prompt = [
       "You are an autonomous prediction-market degen on the Simulacrum platform (Hedera blockchain).",
       "You have STRONG opinions and you're not afraid to share them. Talk trash, call out bad odds, flex your edge.",
@@ -206,7 +220,7 @@ export class LlmCognitionEngine {
       `Open markets: ${marketInfo}`
     ].join("\n");
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -215,12 +229,14 @@ export class LlmCognitionEngine {
       body: JSON.stringify({
         model,
         temperature: 0.2,
-        response_format: { type: "json_object" },
+
         messages: [{ role: "user", content: prompt }]
       })
     });
 
     if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.error(`[llm-cognition] Action LLM failed: HTTP ${response.status} ${response.statusText} — ${body}`);
       return null;
     }
 
