@@ -59,6 +59,19 @@ interface ActionContext {
   markets: MarketSnapshot[];
 }
 
+// Free OpenRouter models to rotate through when rate-limited
+const FALLBACK_MODELS = [
+  "google/gemma-3-27b-it:free",
+  "google/gemma-3-12b-it:free",
+  "google/gemma-3-4b-it:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "mistralai/mistral-small-3.1-24b-instruct:free",
+  "nousresearch/hermes-3-llama-3.1-405b:free",
+  "qwen/qwen3-4b:free",
+  "nvidia/nemotron-nano-9b-v2:free",
+  "stepfun/step-3.5-flash:free",
+];
+
 function stripMarkdownFences(raw: string): string {
   const trimmed = raw.trim();
   const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
@@ -125,18 +138,73 @@ export class LlmCognitionEngine {
     return waitAction("LLM provider unavailable — no scripted fallback, waiting for next tick.");
   }
 
-  async #askGoalModel(context: GoalContext): Promise<{ title: string; detail: string } | null> {
+  /**
+   * Send a chat completion request, rotating through fallback models on 429.
+   */
+  async #chatCompletion(
+    label: string,
+    messages: Array<{ role: string; content: string }>,
+    temperature = 0.7
+  ): Promise<string | null> {
     const apiKey = this.#config.apiKey;
 
     if (!apiKey) {
-      console.warn("[llm-cognition] No API key configured — skipping goal generation.");
+      console.warn(`[llm-cognition] No API key configured — skipping ${label}.`);
       return null;
     }
 
-    const model = this.#config.model ?? "gpt-4o-mini";
     const baseUrl = this.#config.baseUrl ?? "https://api.openai.com/v1";
-    const url = `${baseUrl}/chat/completions`;
-    console.log(`[llm-cognition] Goal request → ${url} model=${model}`);
+    const primaryModel = this.#config.model ?? "gpt-4o-mini";
+    const models = [primaryModel, ...FALLBACK_MODELS.filter((m) => m !== primaryModel)];
+
+    for (const model of models) {
+      const url = `${baseUrl}/chat/completions`;
+      console.log(`[llm-cognition] ${label} → model=${model}`);
+
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ model, temperature, messages })
+        });
+
+        if (response.status === 429) {
+          console.warn(`[llm-cognition] ${label} rate-limited on ${model}, trying next model...`);
+          continue;
+        }
+
+        if (!response.ok) {
+          const body = await response.text().catch(() => "");
+          console.error(`[llm-cognition] ${label} failed: HTTP ${response.status} — ${body}`);
+          return null;
+        }
+
+        const payload = (await response.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        const content = payload.choices?.[0]?.message?.content;
+
+        if (!content) {
+          console.warn(`[llm-cognition] ${label} returned empty content from ${model}, trying next model...`);
+          continue;
+        }
+
+        console.log(`[llm-cognition] ${label} succeeded with ${model}`);
+        return content;
+      } catch (error) {
+        console.error(`[llm-cognition] ${label} fetch error on ${model}: ${error instanceof Error ? error.message : error}`);
+        continue;
+      }
+    }
+
+    console.error(`[llm-cognition] ${label} failed: all models exhausted.`);
+    return null;
+  }
+
+  async #askGoalModel(context: GoalContext): Promise<{ title: string; detail: string } | null> {
     const prompt = [
       "You are an autonomous prediction-market degen on the Simulacrum platform (Hedera blockchain).",
       "You have STRONG opinions. You talk trash about bad markets, call out weak bets, and flex on your wins.",
@@ -144,35 +212,12 @@ export class LlmCognitionEngine {
       "You must NEVER resolve markets — resolution is handled by oracle consensus only.",
       "Be opinionated and entertaining. Your goal titles should have personality — trash talk other positions, brag about your edge, or call out obvious mispricing.",
       "Produce a single goal with title and detail. Focus on market creation, betting, or liquidity provision.",
-      "Return JSON only: {\"title\": string, \"detail\": string}.",
+      "Return JSON only, no markdown fences: {\"title\": string, \"detail\": string}.",
       `Bot: ${context.bot.name}`,
       `Open markets: ${context.markets.filter((market) => market.status === "OPEN").length}`
     ].join("\n");
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      console.error(`[llm-cognition] Goal LLM failed: HTTP ${response.status} ${response.statusText} — ${body}`);
-      return null;
-    }
-
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const raw = payload.choices?.[0]?.message?.content;
+    const raw = await this.#chatCompletion("Goal", [{ role: "user", content: prompt }], 0.7);
 
     if (!raw) {
       return null;
@@ -190,21 +235,10 @@ export class LlmCognitionEngine {
   }
 
   async #askActionModel(context: ActionContext): Promise<ClawdbotPlannedAction | null> {
-    const apiKey = this.#config.apiKey;
-
-    if (!apiKey) {
-      console.warn("[llm-cognition] No API key configured — skipping action decision.");
-      return null;
-    }
-
-    const model = this.#config.model ?? "gpt-4o-mini";
-    const baseUrl = this.#config.baseUrl ?? "https://api.openai.com/v1";
-    const url = `${baseUrl}/chat/completions`;
     const openMarkets = context.markets.filter((m) => m.status === "OPEN");
     const marketInfo = openMarkets.length > 0
       ? openMarkets.map((m) => `${m.id}: "${m.question}" [${m.outcomes.join("/")}]`).join("; ")
       : "none";
-    console.log(`[llm-cognition] Action request → ${url} model=${model} goal="${context.goal.title}"`);
     const prompt = [
       "You are an autonomous prediction-market degen on the Simulacrum platform (Hedera blockchain).",
       "You have STRONG opinions and you're not afraid to share them. Talk trash, call out bad odds, flex your edge.",
@@ -214,36 +248,13 @@ export class LlmCognitionEngine {
       "For PLACE_BET: provide marketId, outcome, and amountHbar (1-5 HBAR). Go big or go home.",
       "For PUBLISH_ORDER: provide marketId, outcome, side (BID/ASK), quantity, and price (0.01-0.99).",
       "Your rationale should be entertaining — trash talk other positions, brag about your conviction, roast bad pricing.",
-      "Return JSON only with fields:",
+      "Return JSON only, no markdown fences, with fields:",
       "{\"type\": string, \"marketId\"?: string, \"outcome\"?: string, \"side\"?: \"BID\"|\"ASK\", \"quantity\"?: number, \"price\"?: number, \"amountHbar\"?: number, \"prompt\"?: string, \"initialOddsByOutcome\"?: {\"OUTCOME\": number}, \"confidence\": number, \"rationale\": string}",
       `Goal: ${context.goal.title} - ${context.goal.detail}`,
       `Open markets: ${marketInfo}`
     ].join("\n");
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      console.error(`[llm-cognition] Action LLM failed: HTTP ${response.status} ${response.statusText} — ${body}`);
-      return null;
-    }
-
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const raw = payload.choices?.[0]?.message?.content;
+    const raw = await this.#chatCompletion("Action", [{ role: "user", content: prompt }], 0.7);
 
     if (!raw) {
       return null;
@@ -302,4 +313,3 @@ export class LlmCognitionEngine {
     };
   }
 }
-
