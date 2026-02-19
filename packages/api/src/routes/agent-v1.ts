@@ -303,10 +303,16 @@ export function createAgentV1Router(options: CreateAgentV1RouterOptions): Router
       options.eventBus.publish("market.created", created.market);
       response.status(201).json(created);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const cause = error instanceof Error && error.cause ? ` — ${(error.cause as Error).message ?? error.cause}` : "";
-      console.error(`[agent-v1] Market creation failed: ${message}${cause}`);
-      response.status(400).json({ error: `${message}${cause}` });
+      const parts: string[] = [];
+      let current: unknown = error;
+      while (current instanceof Error) {
+        parts.push(current.message);
+        current = current.cause;
+      }
+      if (current && !(current instanceof Error)) parts.push(String(current));
+      const fullMessage = parts.join(" — ");
+      console.error(`[agent-v1] Market creation failed: ${fullMessage}`);
+      response.status(400).json({ error: fullMessage });
     }
   });
 
