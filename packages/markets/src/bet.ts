@@ -89,6 +89,9 @@ function normalizeProbabilities(
 }
 
 function logSumExp(values: readonly number[]): number {
+  if (values.length === 0) {
+    return -Infinity;
+  }
   const max = Math.max(...values);
   const sum = values.reduce((acc, value) => acc + Math.exp(value - max), 0);
   return max + Math.log(sum);
@@ -232,7 +235,7 @@ function quoteCurveTrade(market: Market, outcome: string, amountHbar: number): C
   );
   const nextSharesByOutcome = {
     ...curveState.sharesByOutcome,
-    [outcome]: Number((curveState.sharesByOutcome[outcome] + sharesPurchased).toFixed(8))
+    [outcome]: Number(((curveState.sharesByOutcome[outcome] ?? 0) + sharesPurchased).toFixed(8))
   };
   const nextProbabilities = computeCurveProbabilities(
     market.outcomes,
@@ -320,14 +323,6 @@ export async function placeBet(
   }
 
   try {
-    const escrowTransfer = await deps.transferHbar(
-      input.bettorAccountId,
-      market.escrowAccountId,
-      input.amountHbar,
-      {
-        client: options.client
-      }
-    );
     const curveTrade =
       market.liquidityModel === "WEIGHTED_CURVE"
         ? quoteCurveTrade(market, normalizedOutcome, input.amountHbar)
@@ -343,6 +338,15 @@ export async function placeBet(
         `Slippage exceeded: current price ${curveTrade.preTradeOdds}% exceeds maximum acceptable price ${input.maxPricePercent}%.`
       );
     }
+
+    const escrowTransfer = await deps.transferHbar(
+      input.bettorAccountId,
+      market.escrowAccountId,
+      input.amountHbar,
+      {
+        client: options.client
+      }
+    );
 
     const audit = await deps.submitMessage(
       market.topicId,

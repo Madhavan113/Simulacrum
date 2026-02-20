@@ -1,972 +1,1269 @@
+# Simulacrum: Autonomous Agent Prediction Markets on Hedera
 
-
-# 🤖 Simulacrum: Parallel Agent Development Context
-
-> **Copy this entire document into any Claude/AI agent's context to enable coordinated development.**
+> **Last updated**: 2026-02-19 — generated from full codebase audit.
 
 ---
 
-## 📋 PROJECT OVERVIEW
+## 1. Project Overview
 
-**Project**: Simulacrum - Autonomous Agent Prediction Markets on Hedera
+**Project**: Simulacrum — an agent-native prediction market protocol where AI agents stake reputation and HBAR to create, trade, and trustlessly resolve markets at infinite scale.
+
 **Bounty**: $10,000 ETH Denver "Killer App for Agentic Society" (OpenClaw)
-**Deadline**: 5 days
-**Repo Structure**: Monorepo under `ethdenver/` with pnpm workspaces; feature packages in `packages/*`
 
-### One-Liner
-An agent-native prediction market where AI agents create, trade, and resolve markets about each other's behavior - with insurance, reputation, and coordination games built on 100% native Hedera services.
+**Repo root**: `ethdenver/` — pnpm workspace monorepo (no Turborepo)
 
-### Why We Win
-- Agent-first (not human-operated)
-- Network effects (more agents = more value)
-- Full Hedera native (HTS + HCS + HBAR + Scheduled Tx)
-- UCP commerce integration
-- Kitchen-sink features nobody else will have
+### Why Agent-Native
+
+- AI agents are the primary users — they create, operate, and resolve markets autonomously
+- Self-resolving markets via HCS cryptographic attestations
+- Reputation staking creates accountability (lose REP if disputed)
+- Network effects: more agents = more markets = more value
+- Built 100% on native Hedera services (HTS + HCS + HBAR) — no Solidity, no EVM
 
 ---
 
-## 🏗️ ARCHITECTURE
+## 2. Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Runtime** | Node.js 20+ / TypeScript 5.x (target ES2022, NodeNext modules) |
+| **Hedera SDK** | `@hashgraph/sdk` ^2.51.0 |
+| **Monorepo** | pnpm 9+ workspaces (`pnpm-workspace.yaml`) |
+| **API** | Express 4.21 + Zod 3.24 validation + `ws` 8.18 WebSocket |
+| **UI** | React 18.3 + Vite + TailwindCSS + TanStack React Query |
+| **Visualization** | D3 (force-directed trust graph) |
+| **Testing** | Vitest + Supertest (API integration) |
+| **Deployment** | Vercel (UI) + Railway (API) |
+
+### TypeScript Configuration (`tsconfig.base.json`)
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "declaration": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["node"]
+  }
+}
+```
+
+All packages extend this base config with their own `rootDir`/`outDir`.
+
+---
+
+## 3. Repository Structure
 
 ```
 ethdenver/
 ├── packages/
-│   ├── core/                    # Hedera SDK wrapper + primitives
-│   │   ├── src/
-│   │   │   ├── client.ts        # Hedera client initialization
-│   │   │   ├── hts.ts           # Token Service operations
-│   │   │   ├── hcs.ts           # Consensus Service operations
-│   │   │   ├── transfers.ts     # HBAR transfer operations
-│   │   │   ├── accounts.ts      # Account management (+ EncryptedInMemoryKeyStore)
-│   │   │   └── index.ts         # Public exports
-│   │   ├── package.json
-│   │   └── tsconfig.json
+│   ├── types/                      # Shared TypeScript type definitions
+│   │   └── src/index.ts
 │   │
-│   ├── markets/                 # Prediction market logic
-│   │   ├── src/
-│   │   │   ├── create.ts        # Market creation
-│   │   │   ├── bet.ts           # Place bets
-│   │   │   ├── resolve.ts       # Market resolution
-│   │   │   ├── claim.ts         # Claim winnings
-│   │   │   ├── orderbook.ts     # HCS-based order book
-│   │   │   ├── store.ts         # In-memory + persistence
-│   │   │   ├── types.ts         # Market types/interfaces
-│   │   │   └── index.ts
-│   │   └── package.json
+│   ├── core/                       # Hedera SDK wrapper + primitives
+│   │   └── src/
+│   │       ├── client.ts           # Hedera client singleton
+│   │       ├── hedera-utils.ts     # HashScan URLs, tinybar conversion
+│   │       ├── hts.ts              # Token Service operations
+│   │       ├── hcs.ts              # Consensus Service operations
+│   │       ├── transfers.ts        # HBAR transfer operations
+│   │       ├── accounts.ts         # Account management + EncryptedInMemoryKeyStore
+│   │       ├── persistence.ts      # Generic persistent store (JSON file-backed)
+│   │       ├── validation.ts       # Input validation utilities
+│   │       └── index.ts            # Public exports
 │   │
-│   ├── reputation/              # Reputation system
-│   │   ├── src/
-│   │   │   ├── score.ts         # Calculate reputation scores
-│   │   │   ├── attestation.ts   # HCS attestations
-│   │   │   ├── graph.ts         # Trust graph operations
-│   │   │   ├── tokens.ts        # REP token operations
-│   │   │   ├── store.ts         # Reputation state
-│   │   │   ├── types.ts
-│   │   │   └── index.ts
-│   │   └── package.json
+│   ├── markets/                    # Prediction market logic
+│   │   └── src/
+│   │       ├── create.ts           # Market creation (CLOB or WEIGHTED_CURVE)
+│   │       ├── bet.ts              # Place bets (LMSR curve pricing)
+│   │       ├── resolve.ts          # Resolution: direct, self-attest, challenge, oracle vote
+│   │       ├── claim.ts            # Claim winnings (proportional payout)
+│   │       ├── orderbook.ts        # HCS-based CLOB with order matching
+│   │       ├── store.ts            # Persistent market/bet/order state
+│   │       ├── types.ts            # Market, Bet, Order, Resolution types
+│   │       └── index.ts
 │   │
-│   ├── insurance/               # Insurance/bonds system
-│   │   ├── src/
-│   │   │   ├── underwrite.ts    # Agents underwriting others
-│   │   │   ├── pools.ts         # Insurance pool management
-│   │   │   ├── claims.ts        # Process insurance claims
-│   │   │   ├── premiums.ts      # Premium calculations
-│   │   │   ├── store.ts
-│   │   │   ├── types.ts
-│   │   │   └── index.ts
-│   │   └── package.json
+│   ├── reputation/                 # Reputation system
+│   │   └── src/
+│   │       ├── tokens.ts           # REP token creation + distribution
+│   │       ├── attestation.ts      # HCS attestations (endorse, dispute, etc.)
+│   │       ├── score.ts            # Score calculation (exponential decay, confidence-weighted)
+│   │       ├── graph.ts            # Trust graph (BFS clusters, 2-hop transitive trust)
+│   │       ├── store.ts            # Persistent reputation state
+│   │       ├── types.ts
+│   │       └── index.ts
 │   │
-│   ├── coordination/            # Coordination games
-│   │   ├── src/
-│   │   │   ├── assurance.ts     # Assurance contracts
-│   │   │   ├── commitment.ts   # Collective commitments
-│   │   │   ├── schelling.ts    # Schelling point discovery
-│   │   │   ├── store.ts
-│   │   │   ├── types.ts
-│   │   │   └── index.ts
-│   │   └── package.json
+│   ├── insurance/                  # Insurance/bonds system
+│   │   └── src/
+│   │       ├── premiums.ts         # Premium calculation (base rate + risk + volatility)
+│   │       ├── underwrite.ts       # Underwriting commitments
+│   │       ├── claims.ts           # Claim processing with payout
+│   │       ├── pools.ts            # Insurance pool management
+│   │       ├── store.ts            # Persistent insurance state
+│   │       ├── types.ts
+│   │       └── index.ts
 │   │
-│   ├── agents/                  # Agent SDK + simulation
-│   │   ├── src/
-│   │   │   ├── agent.ts         # Base agent class
-│   │   │   ├── platform-client.ts  # API client for agent platform
-│   │   │   ├── strategies/      # Trading/betting strategies
-│   │   │   │   ├── random.ts
-│   │   │   │   ├── reputation-based.ts
-│   │   │   │   └── contrarian.ts
-│   │   │   ├── simulation.ts    # Multi-agent simulation
-│   │   │   ├── openclaw.ts      # OpenClaw integration
-│   │   │   └── index.ts
-│   │   └── package.json
+│   ├── coordination/               # Coordination games
+│   │   └── src/
+│   │       ├── assurance.ts        # Assurance contracts (threshold-triggered)
+│   │       ├── commitment.ts       # Collective commitments (join/complete)
+│   │       ├── schelling.ts        # Schelling point discovery (weighted voting)
+│   │       ├── store.ts            # Persistent coordination state
+│   │       ├── types.ts
+│   │       └── index.ts
 │   │
-│   ├── api/                     # REST API + autonomy + ClawDBots
-│   │   ├── src/
-│   │   │   ├── server.ts        # Express server, WebSocket /ws
-│   │   │   ├── events.ts        # Event bus for real-time
-│   │   │   ├── agent-platform/  # Agent auth + faucet + wallet
-│   │   │   │   ├── auth.ts
-│   │   │   │   ├── faucet.ts
-│   │   │   │   ├── store.ts
-│   │   │   │   ├── wallet-store.ts
-│   │   │   │   └── types.ts
-│   │   │   ├── autonomy/       # Autonomous engine
-│   │   │   │   └── engine.ts
-│   │   │   ├── clawdbots/       # ClawDBot network runtime
-│   │   │   │   ├── network.ts
-│   │   │   │   ├── llm-cognition.ts
-│   │   │   │   └── credential-store.ts
-│   │   │   ├── markets/
-│   │   │   │   └── lifecycle.ts # Market lifecycle sweep
-│   │   │   ├── routes/
-│   │   │   │   ├── agent-v1.ts  # Mounted at /agent/v1
-│   │   │   │   ├── agents.ts
-│   │   │   │   ├── autonomy.ts
-│   │   │   │   ├── clawdbots.ts
-│   │   │   │   ├── insurance.ts
-│   │   │   │   ├── markets.ts
-│   │   │   │   └── reputation.ts
-│   │   │   ├── middleware/
-│   │   │   │   ├── auth.ts
-│   │   │   │   ├── validation.ts
-│   │   │   │   ├── agent-auth.ts
-│   │   │   │   └── autonomy-guard.ts
-│   │   │   ├── cli/             # CLI entrypoints
-│   │   │   │   ├── reset-state.ts
-│   │   │   │   ├── seed-demo.ts
-│   │   │   │   ├── demo-runner.ts
-│   │   │   │   ├── live-smoke.ts
-│   │   │   │   ├── autonomous-runner.ts
-│   │   │   │   ├── autonomous-smoke.ts
-│   │   │   │   └── clawdbot-network-runner.ts
-│   │   │   └── index.ts
-│   │   └── package.json
+│   ├── agents/                     # Agent SDK + simulation
+│   │   └── src/
+│   │       ├── agent.ts            # BaseAgent class + AgentStrategy interface
+│   │       ├── platform-client.ts  # PlatformClient HTTP client for /agent/v1 API
+│   │       ├── simulation.ts       # Multi-agent simulation runner
+│   │       ├── openclaw.ts         # OpenClaw tool-call adapter
+│   │       ├── strategies/
+│   │       │   ├── random.ts       # Random baseline strategy
+│   │       │   ├── reputation-based.ts  # Trust creator reputation
+│   │       │   └── contrarian.ts   # Bet against consensus
+│   │       └── index.ts
 │   │
-│   └── ui/                      # Observer UI (React + Vite)
-│       ├── src/
-│       │   ├── App.tsx          # Routes: / (Landing), /app/* (Shell)
-│       │   ├── main.tsx
-│       │   ├── components/
-│       │   │   ├── layout/
-│       │   │   │   ├── Shell.tsx
-│       │   │   │   ├── Nav.tsx
-│       │   │   │   └── PageHeader.tsx
-│       │   │   ├── landing/
-│       │   │   │   ├── AnimatedBackground.tsx
-│       │   │   │   └── DitherCanvas.tsx
-│       │   │   ├── dither/
-│       │   │   │   ├── MacroblockReveal.tsx
-│       │   │   │   └── DitherPanel.tsx
-│       │   │   ├── AgentCard.tsx
-│       │   │   ├── MarketCard.tsx
-│       │   │   ├── ActivityFeed.tsx
-│       │   │   ├── TrustGraph.tsx
-│       │   │   ├── OddsBar.tsx
-│       │   │   ├── Drawer.tsx
-│       │   │   ├── Sparkline.tsx
-│       │   │   └── HashScanLink.tsx
-│       │   ├── hooks/
-│       │   │   ├── useMarkets.ts
-│       │   │   ├── useAgents.ts
-│       │   │   ├── useReputation.ts
-│       │   │   ├── useClawdbots.ts
-│       │   │   ├── useAutonomy.ts
-│       │   │   └── useWebSocket.tsx
-│       │   ├── pages/
-│       │   │   ├── Landing.tsx
-│       │   │   ├── Dashboard.tsx
-│       │   │   ├── Markets.tsx
-│       │   │   ├── MarketDetail.tsx   # In-drawer detail view
-│       │   │   ├── Agents.tsx
-│       │   │   └── Bots.tsx
-│       │   ├── api/
-│       │   │   ├── client.ts
-│       │   │   ├── markets.ts
-│       │   │   ├── agents.ts
-│       │   │   ├── reputation.ts
-│       │   │   ├── insurance.ts
-│       │   │   ├── autonomy.ts
-│       │   │   ├── clawdbots.ts
-│       │   │   └── types.ts
-│       │   ├── lib/
-│       │   │   └── dither.ts
-│       │   ├── utils/
-│       │   │   └── odds.ts
-│       │   └── styles/
-│       │       └── globals.css
-│       ├── package.json
-│       ├── vite.config.ts
-│       └── tailwind.config.ts
+│   ├── api/                        # REST API + WebSocket + autonomous systems
+│   │   └── src/
+│   │       ├── server.ts           # Express server factory + WebSocket /ws
+│   │       ├── events.ts           # Pub/sub event bus
+│   │       ├── wallet-persistence.ts  # Wallet credential persistence
+│   │       ├── agent-platform/     # Agent auth + faucet + wallet encryption
+│   │       │   ├── auth.ts         # JWT auth service (Ed25519 challenge-response)
+│   │       │   ├── faucet.ts       # Auto-refill service (testnet only)
+│   │       │   ├── store.ts        # Platform state persistence
+│   │       │   ├── wallet-store.ts # AES-256-GCM wallet encryption
+│   │       │   └── types.ts
+│   │       ├── autonomy/
+│   │       │   └── engine.ts       # Autonomous agent orchestration engine
+│   │       ├── clawdbots/
+│   │       │   ├── network.ts      # ClawDBot network runtime
+│   │       │   ├── llm-cognition.ts  # LLM decision engine (OpenRouter/OpenAI)
+│   │       │   └── credential-store.ts  # Encrypted bot credential store
+│   │       ├── markets/
+│   │       │   └── lifecycle.ts    # Market lifecycle sweeper (close + auto-resolve)
+│   │       ├── routes/
+│   │       │   ├── agent-v1.ts     # /agent/v1/* (JWT-authenticated agent API)
+│   │       │   ├── agents.ts       # /agents (simulation agents)
+│   │       │   ├── markets.ts      # /markets (legacy, no auth)
+│   │       │   ├── market-helpers.ts  # Oracle quorum + reputation helpers
+│   │       │   ├── autonomy.ts     # /autonomy (engine control)
+│   │       │   ├── clawdbots.ts    # /clawdbots (bot network control)
+│   │       │   ├── reputation.ts   # /reputation (scores, attestations, graph)
+│   │       │   └── insurance.ts    # /insurance (policies, pools)
+│   │       ├── middleware/
+│   │       │   ├── auth.ts         # API key authentication
+│   │       │   ├── agent-auth.ts   # JWT agent authentication + agent-only guard
+│   │       │   ├── validation.ts   # Zod body validation
+│   │       │   ├── rate-limit.ts   # Sliding-window rate limiter
+│   │       │   ├── cors.ts         # CORS middleware
+│   │       │   └── autonomy-guard.ts  # Blocks manual mutations in strict mode
+│   │       ├── cli/
+│   │       │   ├── dev-server.ts           # Development server (seed + legacy routes)
+│   │       │   ├── production-server.ts    # Production server (clawdbots default)
+│   │       │   ├── reset-state.ts          # Reset all in-memory stores
+│   │       │   ├── seed-demo.ts            # Seed demo agents + market
+│   │       │   ├── demo-runner.ts          # Seed + live smoke
+│   │       │   ├── live-smoke.ts           # E2E smoke on live testnet
+│   │       │   ├── autonomous-runner.ts    # Server with autonomy engine
+│   │       │   ├── autonomous-smoke.ts     # Autonomy smoke test
+│   │       │   ├── clawdbot-network-runner.ts  # Server with ClawDBot network
+│   │       │   └── utils.ts               # .env loader, credential helpers
+│   │       └── index.ts
+│   │
+│   └── ui/                         # Observer UI (React + Vite)
+│       ├── vite.config.ts          # Dev proxy to API, port 5173
+│       ├── tailwind.config.ts      # Dark theme, custom CSS variables
+│       └── src/
+│           ├── App.tsx             # Routes, QueryClient, WebSocketProvider
+│           ├── main.tsx            # Entry point
+│           ├── pages/
+│           │   ├── Landing.tsx     # Public landing with scroll reveal + dither effects
+│           │   ├── Dashboard.tsx   # Engine control, stats, markets grid, activity feed
+│           │   ├── Markets.tsx     # Filterable market list with drawer detail
+│           │   ├── MarketDetail.tsx       # Market detail (odds, bets, orderbook, disputes)
+│           │   ├── MarketDetailPage.tsx   # Route wrapper for MarketDetail
+│           │   ├── Agents.tsx      # Agent grid + reputation leaderboard
+│           │   ├── Bots.tsx        # ClawDBot management + thread
+│           │   └── Onboard.tsx     # Developer onboarding / SDK docs
+│           ├── components/
+│           │   ├── layout/
+│           │   │   ├── Shell.tsx        # App shell (sidebar + content)
+│           │   │   ├── Nav.tsx          # Sidebar navigation
+│           │   │   └── PageHeader.tsx
+│           │   ├── landing/
+│           │   │   ├── AnimatedBackground.tsx  # GIF + gradient + film grain
+│           │   │   └── DitherCanvas.tsx        # Pixelated dither canvas
+│           │   ├── dither/
+│           │   │   ├── MacroblockReveal.tsx    # Macroblock reveal animation
+│           │   │   └── DitherPanel.tsx         # Data-driven dither panel
+│           │   ├── ErrorBoundary.tsx
+│           │   ├── MarketCard.tsx       # Vertical/horizontal market card
+│           │   ├── AgentCard.tsx        # Agent profile card
+│           │   ├── BotCard.tsx          # ClawDBot profile card
+│           │   ├── ActivityFeed.tsx     # Real-time WebSocket event feed
+│           │   ├── Drawer.tsx           # Right-side drawer panel
+│           │   ├── OddsBar.tsx          # Horizontal odds distribution bar
+│           │   ├── Sparkline.tsx        # SVG sparkline with gradient
+│           │   ├── StatTile.tsx         # Stat display card
+│           │   ├── Skeleton.tsx         # Loading placeholders
+│           │   ├── EngineControl.tsx    # Start/Stop engine control
+│           │   ├── ThreadMessage.tsx    # Bot thread message
+│           │   ├── AgentDrawerContent.tsx  # Agent detail drawer
+│           │   ├── TrustGraph.tsx       # D3 force-directed trust graph
+│           │   └── HashScanLink.tsx     # HashScan link with copy
+│           ├── hooks/
+│           │   ├── useWebSocket.tsx     # WebSocket provider + auto-reconnect
+│           │   ├── useMarkets.ts        # Market data queries
+│           │   ├── useAgents.ts         # Agent data queries
+│           │   ├── useReputation.ts     # Leaderboard + trust graph queries
+│           │   ├── useClawdbots.ts      # ClawDBot status/bots/thread/goals queries
+│           │   └── useAutonomy.ts       # Autonomy status query
+│           ├── api/
+│           │   ├── client.ts            # apiFetch wrapper + ApiError
+│           │   ├── types.ts             # Re-exports from @simulacrum/types
+│           │   ├── markets.ts           # Markets API client
+│           │   ├── agents.ts            # Agents API client
+│           │   ├── reputation.ts        # Reputation API client
+│           │   ├── clawdbots.ts         # ClawDBot API client
+│           │   ├── autonomy.ts          # Autonomy API client
+│           │   └── insurance.ts         # Insurance API client
+│           ├── lib/
+│           │   └── dither.ts            # Dither patterns (Bayer, checker, diamond, etc.)
+│           ├── utils/
+│           │   └── odds.ts              # Implied odds computation
+│           └── styles/
+│               ├── globals.css          # CSS variables, component styles, animations
+│               ├── landing.css          # Landing page styles
+│               └── onboard.css          # Onboarding page styles
 │
-├── docs/
-│   └── plans/                   # Design/impl plans
-├── .env.example
-├── package.json                 # Workspace root (pnpm)
-├── pnpm-workspace.yaml
-└── README.md
+├── package.json                    # Root workspace config
+├── pnpm-workspace.yaml             # packages: ["packages/*"]
+├── tsconfig.base.json              # Shared TypeScript base config
+├── vercel.json                     # Vercel deployment (UI)
+├── .env.example                    # Environment template
+├── README.md                       # Project overview + quick start
+├── context.md                      # This file
+├── linear.md                       # Ticket list + PR checklist
+└── BUGBOT_INDEX.md                 # Bookkeeper index
 ```
 
 **Notes:**
-- **Tests** are colocated in each package (e.g. `core/src/*.test.ts`); no root `tests/` folder.
-- **CLI scripts** live in `packages/api/src/cli/`; run via `pnpm infra:*` from root (e.g. `infra:reset`, `infra:seed`, `infra:clawdbots`).
-- **Scheduled transactions**: not yet in `core` (planned; not implemented).
+- Tests are colocated in each package (e.g. `core/src/*.test.ts`). No root `tests/` folder.
+- CLI scripts in `packages/api/src/cli/`; run via `pnpm infra:*` from root.
+- Build artifacts in `dist/` directories (gitignored).
+- Persistent state in `packages/api/.simulacrum-state/` (JSON files).
 
 ---
 
-## 🔧 TECH STACK
+## 4. Package Details
 
-| Layer | Technology |
-|-------|------------|
-| **Runtime** | Node.js 20+ / TypeScript 5.x |
-| **Hedera SDK** | `@hashgraph/sdk` ^2.51.0 |
-| **Monorepo** | pnpm workspaces (`pnpm-workspace.yaml`); no Turborepo |
-| **API** | Express.js + Zod validation |
-| **UI** | React 18 + Vite + TailwindCSS |
-| **Testing** | Vitest |
-| **Linting** | ESLint + Prettier |
+### 4.1 `@simulacrum/types`
 
-### API routes (when legacy routes enabled)
-- `GET /health` — health check
-- `GET|POST /markets` — list/create markets
-- `GET /agents` — list agents
-- `POST /autonomy/start`, `POST /autonomy/stop`, `GET /autonomy/status` — autonomy engine
-- `GET|POST /clawdbots/*` — ClawDBot network (status, thread, bots, join, start, stop, message, markets)
-- `GET /reputation/*` — reputation
-- `GET|POST /insurance/*` — insurance
-- `WS /ws` — real-time event stream
-- `GET|POST /agent/v1/*` — agent platform (when agent platform enabled; auth, faucet, self-registration)
+Shared TypeScript type definitions consumed by `ui` and other packages.
 
----
+**Key types exported:**
 
-## 🌐 HEDERA SERVICES REFERENCE
-
-### HTS (Hedera Token Service)
-```typescript
-import {
-  TokenCreateTransaction,
-  TokenMintTransaction,
-  TokenBurnTransaction,
-  TokenAssociateTransaction,
-  TransferTransaction,
-  TokenType,
-  TokenSupplyType,
-} from "@hashgraph/sdk";
-
-// Fungible token (YES/NO/REP tokens)
-const tokenCreate = new TokenCreateTransaction()
-  .setTokenName("YES-BTC100K")
-  .setTokenSymbol("YES")
-  .setTokenType(TokenType.FungibleCommon)
-  .setDecimals(2)
-  .setInitialSupply(0)
-  .setSupplyType(TokenSupplyType.Infinite)
-  .setTreasuryAccountId(treasuryId)
-  .setSupplyKey(supplyKey)
-  .setAdminKey(adminKey);
-
-// NFT (Agent identity badges)
-const nftCreate = new TokenCreateTransaction()
-  .setTokenName("Simulacrum Identity")
-  .setTokenSymbol("AGENTID")
-  .setTokenType(TokenType.NonFungibleUnique)
-  .setSupplyType(TokenSupplyType.Finite)
-  .setMaxSupply(10000)
-  .setTreasuryAccountId(treasuryId)
-  .setSupplyKey(supplyKey);
-```
-
-### HCS (Hedera Consensus Service)
-```typescript
-import {
-  TopicCreateTransaction,
-  TopicMessageSubmitTransaction,
-} from "@hashgraph/sdk";
-
-// Create topic (for orderbook, audit trail, etc.)
-const topicCreate = new TopicCreateTransaction()
-  .setTopicMemo("Simulacrum Market: BTC>100k")
-  .setSubmitKey(submitKey)
-  .setAdminKey(adminKey);
-
-// Submit message
-const messageSubmit = new TopicMessageSubmitTransaction()
-  .setTopicId(topicId)
-  .setMessage(JSON.stringify({
-    type: "BET",
-    agent: "0.0.12345",
-    outcome: "YES",
-    amount: 100,
-    timestamp: Date.now()
-  }));
-
-// Subscribe to topic (via Mirror Node)
-// GET https://testnet.mirrornode.hedera.com/api/v1/topics/{topicId}/messages
-```
-
-### HBAR Transfers
-```typescript
-import { TransferTransaction, Hbar } from "@hashgraph/sdk";
-
-const transfer = new TransferTransaction()
-  .addHbarTransfer(fromAccount, Hbar.from(-10))
-  .addHbarTransfer(toAccount, Hbar.from(10));
-```
-
-### Scheduled Transactions
-```typescript
-import { ScheduleCreateTransaction } from "@hashgraph/sdk";
-
-// Schedule a future transaction (e.g., market resolution)
-const scheduled = new ScheduleCreateTransaction()
-  .setScheduledTransaction(innerTransaction)
-  .setPayerAccountId(payerId)
-  .setAdminKey(adminKey)
-  .setScheduleMemo("Market resolution: BTC>100k @ 2026-03-01");
-```
+| Type | Description |
+|------|-------------|
+| `Market` | Market with outcomes, odds, resolution, challenges, oracle votes |
+| `MarketStatus` | `"OPEN" \| "CLOSED" \| "RESOLVED" \| "DISPUTED"` |
+| `MarketLiquidityModel` | `"CLOB" \| "WEIGHTED_CURVE"` |
+| `MarketBet` | Bet record with HBAR amount and transaction ID |
+| `MarketOrder` | Order book entry (BID/ASK) |
+| `MarketResolution` | Resolution record |
+| `ClaimRecord` | Payout claim |
+| `Agent` | Agent profile (account, bankroll, reputation, strategy) |
+| `AgentMode` | `"AGGRESSIVE" \| "BALANCED" \| "CONSERVATIVE"` |
+| `ReputationLeaderboardEntry` | Leaderboard entry |
+| `TrustEdge`, `TrustGraph` | Trust network structures |
+| `AutonomyStatus` | Autonomy engine status |
+| `ClawdbotNetworkStatus` | Bot network status |
+| `ClawdbotProfile` | Bot profile |
+| `ClawdbotMessage` | Bot thread message |
+| `ClawdbotGoal` | Goal with status tracking |
+| `InsurancePolicy` | Insurance policy |
+| `InsurancePool` | Liquidity pool |
+| `WsEvent<T>` | Generic WebSocket event wrapper |
 
 ---
 
-## 📊 DATA MODELS
+### 4.2 `@simulacrum/core`
+
+Hedera SDK wrapper providing all primitive operations. Depends on `@hashgraph/sdk`.
+
+#### `client.ts` — Hedera Client
+
+| Export | Description |
+|--------|-------------|
+| `createHederaClient(overrides?)` | Create a new Hedera client instance |
+| `getHederaClient(overrides?)` | Get or create singleton client |
+| `resetHederaClientForTests()` | Reset singleton for test isolation |
+| `hederaClient` | Singleton client instance |
+| `HederaClientError` | Error class |
+
+- Reads `HEDERA_NETWORK`, `HEDERA_ACCOUNT_ID`, `HEDERA_PRIVATE_KEY`, `HEDERA_PRIVATE_KEY_TYPE` from env
+- Auto-detects key format: ECDSA, ED25519, or DER (hex with/without `0x`)
+- Supports testnet, mainnet, previewnet
+
+#### `hedera-utils.ts` — Shared Utilities
+
+| Export | Description |
+|--------|-------------|
+| `HASHSCAN_BASE_URL` | `"https://hashscan.io"` |
+| `DEFAULT_NETWORK` | `"testnet"` |
+| `TINYBARS_PER_HBAR` | `100_000_000n` |
+| `resolveClient(client?)` | Return provided client or singleton |
+| `resolveNetwork(client)` | Determine network from client's ledgerId |
+| `buildTransactionUrl(network, txId)` | HashScan transaction URL |
+| `buildTopicUrl(network, topicId)` | HashScan topic URL |
+| `buildTokenUrl(network, tokenId)` | HashScan token URL |
+| `buildAccountUrl(network, accountId)` | HashScan account URL |
+| `toTinybars(amount)` | Convert HBAR to tinybars |
+
+#### `hts.ts` — Hedera Token Service
+
+| Export | Signature | Description |
+|--------|-----------|-------------|
+| `createFungibleToken` | `(name, symbol, initialSupply, decimals, options?) → TokenOperationResult` | Create fungible token (infinite supply) |
+| `createNFT` | `(name, symbol, maxSupply, options?) → TokenOperationResult` | Create NFT collection (finite supply) |
+| `mintTokens` | `(tokenId, amount, options?) → TokenOperationResult` | Mint tokens |
+| `transferTokens` | `(tokenId, from, to, amount, options?) → TokenOperationResult` | Transfer tokens |
+| `associateToken` | `(accountId, tokenId, options?) → TokenOperationResult` | Associate token with account |
+
+Returns token ID, transaction ID, and HashScan URLs.
+
+#### `hcs.ts` — Hedera Consensus Service
+
+| Export | Signature | Description |
+|--------|-----------|-------------|
+| `createTopic` | `(memo, submitKey?, options?) → TopicOperationResult` | Create HCS topic |
+| `submitMessage` | `(topicId, message, options?) → TopicMessageSubmitResult` | Submit message (string, bytes, or object) |
+| `getMessages` | `(topicId, options?) → GetTopicMessagesResult` | Fetch messages via Mirror Node REST API |
+| `subscribeToTopic` | `(topicId, callback, options?) → TopicSubscription` | Poll for new messages (default 3s interval) |
+
+Mirror Node URLs: `testnet.mirrornode.hedera.com`, `mainnet-public.mirrornode.hedera.com`, `previewnet.mirrornode.hedera.com`
+
+#### `transfers.ts` — HBAR Transfers
+
+| Export | Signature | Description |
+|--------|-----------|-------------|
+| `transferHbar` | `(from, to, amount, options?) → TransferOperationResult` | Single transfer |
+| `multiTransfer` | `(transfers[], options?) → TransferOperationResult` | Batch transfer (validates net-zero) |
+| `getBalance` | `(accountId, options?) → BalanceResult` | Query balance (HBAR + tinybars) |
+
+#### `accounts.ts` — Account Management
+
+| Export | Signature | Description |
+|--------|-----------|-------------|
+| `createAccount` | `(initialBalance, options?) → CreateAccountResult` | Create account with ED25519 keys |
+| `getAccountInfo` | `(accountId, options?) → AccountInfoResult` | Query account info |
+| `getStoredPrivateKey` | `(accountId, options?) → string \| null` | Retrieve from key store |
+| `EncryptedInMemoryKeyStore` | class | AES-256-GCM encrypted key storage |
+
+Key store uses `HEDERA_KEYSTORE_SECRET` env var for encryption.
+
+#### `persistence.ts` — State Persistence
+
+| Export | Signature | Description |
+|--------|-----------|-------------|
+| `isPersistenceEnabled()` | `→ boolean` | Check if persistence on (disabled in test) |
+| `stateDirectory()` | `→ string` | Default: `.simulacrum-state` |
+| `stateFilePath(fileName)` | `→ string` | Full path for state file |
+| `createPersistentStore(options)` | `→ PersistentStore<T>` | Create generic JSON-backed store |
+
+Controlled by `SIMULACRUM_PERSIST_STATE` (default `true`) and `SIMULACRUM_STATE_DIR`.
+
+#### `validation.ts` — Input Validation
+
+| Export | Description |
+|--------|-------------|
+| `ValidationError` | Error class |
+| `validateNonEmptyString(value, field)` | Throw if empty/whitespace |
+| `validatePositiveNumber(value, field)` | Throw if ≤ 0 or non-finite |
+| `validatePositiveInteger(value, field)` | Throw if not positive integer |
+| `validateNonNegativeNumber(value, field)` | Throw if < 0 |
+| `validateFiniteNumber(value, field)` | Throw if not finite |
+| `validateNonNegativeInteger(value, field)` | Throw if negative integer |
+| `clamp(value, min, max)` | Constrain to range |
+
+**Tests:** 5 test files — client, accounts, hts, hcs, transfers.
+
+---
+
+### 4.3 `@simulacrum/markets`
+
+Prediction market logic. Depends on `@simulacrum/core`.
+
+#### `create.ts` — Market Creation
+
+`createMarket(input: CreateMarketInput, options?): Promise<CreateMarketResult>`
+
+- Normalizes outcomes (defaults to `["YES", "NO"]`, uppercase, deduplicated)
+- Normalizes initial odds to sum to 100%
+- Selects liquidity model: `WEIGHTED_CURVE` if `lowLiquidity: true`, else `CLOB`
+- Initializes LMSR curve state for weighted curve markets (default liquidity: 25 HBAR)
+- Creates Hedera topic via `@simulacrum/core`
+- Generates synthetic outcome token IDs: `"{topicId}:{outcome}"`
+- Publishes `MARKET_CREATED` message to topic
+- Stores in persistent market store
+
+#### `bet.ts` — Place Bets
+
+`placeBet(input: PlaceBetInput, options?): Promise<MarketBet>`
+
+- Validates market is OPEN, prevents creator/escrow from betting
+- Transfers HBAR from bettor to escrow
+- **WEIGHTED_CURVE** markets: LMSR (Logarithmic Market Scoring Rule) pricing
+  - Cost function: `liquidity * logSumExp(shares / liquidity)`
+  - Shares via binary search to match bet amount
+  - Updates curve state and odds after bet
+  - `maxPricePercent` slippage protection
+- **CLOB** markets: simple bet recording
+- Publishes `BET_PLACED` to topic
+- Default max bet: 10,000 HBAR (configurable, 0 to disable)
+
+#### `resolve.ts` — Market Resolution
+
+| Function | Description |
+|----------|-------------|
+| `resolveMarket(input, options?)` | Direct resolution — sets RESOLVED status |
+| `selfAttestMarket(input, options?)` | Creator self-attestation — sets DISPUTED, opens challenge window (default 15 min) |
+| `challengeMarketResolution(input, options?)` | Challenge during window — records proposed outcome + evidence |
+| `submitOracleVote(input, options?)` | Oracle voting — weighted by `reputationScore * confidence`, auto-finalizes at quorum |
+
+Oracle quorum: `max(oracleMinVotes, ceil(eligible * quorumPercent))`, default 2 minimum votes.
+Ineligible voters: creator, self-attester, challengers.
+
+#### `claim.ts` — Claim Winnings
+
+`claimWinnings(input: ClaimWinningsInput, options?): Promise<ClaimRecord>`
+
+- Validates market is RESOLVED
+- Prevents duplicate claims via `claimIndex` Set
+- Payout: `(accountWinningStake * totalPool) / winningPool`
+- WEIGHTED_CURVE: proportional to curve shares
+- Transfers HBAR from escrow to winner using bigint arithmetic (tinybars)
+
+#### `orderbook.ts` — Order Book
+
+| Function | Description |
+|----------|-------------|
+| `publishOrder(input, options?)` | Submit limit order, auto-match |
+| `cancelOrder(marketId, orderId, accountId, options?)` | Cancel order |
+| `getOrderBook(marketId, options?)` | Snapshot (optional Mirror Node merge) |
+
+Matching: bids price DESC → asks price ASC; fill at ask price (maker-taker).
+
+#### `store.ts` — Persistent Store
+
+Markets, bets, claims, orders, and claimIndex stored in Maps/Sets. Persisted to `markets.json`.
+
+**Tests:** 6 test files — create, curve, orderbook, resolve, store persistence, trading lifecycle.
+
+---
+
+### 4.4 `@simulacrum/reputation`
+
+Reputation system. Depends on `@simulacrum/core`.
+
+#### `tokens.ts`
+
+| Function | Description |
+|----------|-------------|
+| `createRepToken(input, options?)` | Create REP fungible token on Hedera |
+| `mintAndDistributeRep(input, options?)` | Mint + transfer REP to account |
+
+#### `attestation.ts`
+
+| Function | Description |
+|----------|-------------|
+| `ensureAttestationTopic(options?)` | Create or reuse attestation topic |
+| `submitAttestation(input, options?)` | Submit attestation (scoreDelta clamped -100..100, confidence 0..1) |
+| `listAttestations(topicId, options?)` | List attestations from topic |
+
+#### `score.ts`
+
+| Function | Description |
+|----------|-------------|
+| `calculateReputationScore(accountId, attestations, options?)` | Score 0–100; exponential decay (90-day half-life), confidence-weighted, baseline 50 |
+| `buildReputationLeaderboard(attestations, options?)` | Sorted leaderboard of all agents |
+
+#### `graph.ts`
+
+| Function | Description |
+|----------|-------------|
+| `buildTrustGraph(attestations)` | Directed graph from attestations |
+| `getTrustScoreBetween(graph, from, to)` | Direct + 2-hop transitive trust |
+| `detectTrustClusters(graph)` | BFS-based cluster detection |
+
+**Store:** `reputation.json` — REP token config, topic info, attestations.
+
+**Tests:** 3 test files — tokens, attestation, score+graph.
+
+---
+
+### 4.5 `@simulacrum/insurance`
+
+Insurance/bonds system. Depends on `@simulacrum/core`.
+
+#### `premiums.ts`
+
+`calculatePremium(inputs: PremiumInputs): PremiumQuote`
+
+Formula: `baseRate(300bps) * riskMultiplier * sqrt(durationFactor)` where risk = normalized risk (0–2) + volatility (0–2), duration factor 0.25–6x.
+
+#### `underwrite.ts`
+
+| Function | Description |
+|----------|-------------|
+| `underwriteCommitment(input, options?)` | Transfer collateral to escrow, create ACTIVE policy |
+| `quoteCommitmentPremium(coverage, risk, volatility, days)` | Quote premium amount |
+
+#### `claims.ts`
+
+`processClaim(input, options?): Promise<InsurancePolicy>` — validates policy, transfers payout from escrow, sets CLAIMED.
+
+#### `pools.ts`
+
+| Function | Description |
+|----------|-------------|
+| `createInsurancePool(manager, escrow, initialLiquidity, options?)` | Create pool |
+| `depositLiquidity(poolId, accountId, amount, options?)` | Add liquidity |
+| `reserveCoverage(poolId, amount, store?)` | Reserve for underwriting |
+
+**Store:** `insurance.json` — policies and pools in Maps.
+
+**Tests:** 5 test files — premiums, underwrite, claims, pools, integration.
+
+---
+
+### 4.6 `@simulacrum/coordination`
+
+Coordination games. Depends on `@simulacrum/core`.
+
+#### `assurance.ts` — Assurance Contracts
+
+| Function | Description |
+|----------|-------------|
+| `createAssuranceContract(input, options?)` | Create with HBAR threshold + deadline |
+| `pledgeToAssurance(contractId, accountId, amount, options?)` | Pledge HBAR (auto-triggers at threshold) |
+| `evaluateAssuranceContract(contractId, store?)` | Evaluate: OPEN → TRIGGERED or FAILED |
+
+#### `commitment.ts` — Collective Commitments
+
+| Function | Description |
+|----------|-------------|
+| `createCollectiveCommitment(input, options?)` | Create with required participant count |
+| `joinCommitment(id, participant, options?)` | Join (OPEN → ACTIVE when quorum met) |
+| `completeCommitment(id, participant, options?)` | Complete (ACTIVE → COMPLETED when all done) |
+
+#### `schelling.ts`
+
+`findSchellingPoint(votes: SchellingVote[]): SchellingResult` — weighted vote aggregation, returns winning option + confidence + breakdown.
+
+**Store:** `coordination.json` — contracts, pledges, commitments.
+
+**Tests:** 1 test file — coordination.
+
+---
+
+### 4.7 `@simulacrum/agents`
+
+Agent SDK and simulation. Depends on `@simulacrum/core`, `@simulacrum/markets`, `@simulacrum/reputation`.
+
+#### `agent.ts` — BaseAgent
+
+```typescript
+class BaseAgent {
+  readonly id: string;
+  readonly name: string;
+  readonly accountId: string;
+  readonly mode: AgentMode;
+  get bankrollHbar(): number;
+  get reputationScore(): number;
+  get strategy(): AgentStrategy;
+
+  setStrategy(strategy: AgentStrategy): void;
+  adjustBankroll(deltaHbar: number): void;
+  adjustReputation(delta: number): void;  // clamped 0–100
+  decideBet(market: MarketSnapshot, context: AgentContext): Promise<BetDecision | null>;
+}
+```
+
+`AgentStrategy` interface: `{ name: string; decide(agent, market, context): BetDecision | null }`
+
+#### Strategies
+
+| Strategy | Function | Behavior |
+|----------|----------|----------|
+| Random | `createRandomStrategy(options?)` | Random outcome, random amount up to 20% bankroll |
+| Reputation | `createReputationBasedStrategy(options?)` | YES if creator rep ≥ 65, else NO; confidence = rep/100 |
+| Contrarian | `createContrarianStrategy(options?)` | Pick lowest-sentiment outcome; confidence = 1 - sentiment |
+
+#### `simulation.ts`
+
+`runMultiAgentSimulation(agents, markets, options): Promise<SimulationResult>` — runs N rounds over all markets/agents, deducts bankroll, fires `onBet` callback.
+
+#### `platform-client.ts` — PlatformClient
+
+HTTP client for `/agent/v1` API:
+
+| Method | Description |
+|--------|-------------|
+| `registerAgent(input)` | POST `/auth/register` |
+| `requestChallenge(agentId)` | POST `/auth/challenge` |
+| `verifyChallengeAndLogin(input)` | POST `/auth/verify` (Ed25519 signing) |
+| `listMarkets()` | GET `/markets` |
+| `createMarket(input)` | POST `/markets` |
+| `placeBet(input)` | POST `/markets/:id/bets` |
+| `placeOrder(input)` | POST `/markets/:id/orders` |
+| `resolveMarket(input)` | POST `/markets/:id/resolve` |
+| `claimWinnings(input)` | POST `/markets/:id/claims` |
+| `getWalletBalance()` | GET `/wallet/balance` |
+
+#### `openclaw.ts` — OpenClaw Adapter
+
+`createOpenClawAdapter(agent, handlers): OpenClawAdapter` — maps OpenClaw tool names to handlers:
+
+| Tool Name | Handler |
+|-----------|---------|
+| `create_market` | `createMarket` |
+| `place_bet` | `placeBet` |
+| `publish_order` | `publishOrder` |
+| `resolve_market` | `resolveMarket` |
+| `self_attest` | `selfAttest` |
+| `challenge_resolution` | `challengeResolution` |
+| `oracle_vote` | `oracleVote` |
+| `claim_winnings` | `claimWinnings` |
+| `fetch_markets` | `fetchMarkets` |
+
+**Tests:** 4 test files — agent, simulation, platform-client, openclaw.
+
+---
+
+### 4.8 `@simulacrum/api`
+
+REST API server with WebSocket, autonomous systems, and CLI tools. Depends on all other packages.
+
+#### Server (`server.ts`)
+
+`createApiServer(options?): ApiServer` — Express + WebSocket server with:
+
+- JSON body parsing
+- CORS middleware (configurable origins)
+- Rate limiting (sliding window)
+- API key auth (optional)
+- Agent-only mode guard
+- Autonomy mutation guard (strict mode)
+- All route mounts
+- WebSocket at `/ws` (JWT auth in agent-only mode)
+- Lifecycle: starts/stops autonomy, clawdbots, faucet, lifecycle sweeper
+
+#### Event Bus (`events.ts`)
+
+`createEventBus(): ApiEventBus` — in-memory pub/sub; publishes timestamped events to WebSocket clients.
+
+#### Agent Platform
+
+| Component | Purpose |
+|-----------|---------|
+| `AgentAuthService` | Ed25519 challenge-response auth + HMAC-SHA256 JWT signing |
+| `AgentFaucetService` | Auto-refill (testnet only): threshold 3 HBAR → target 20 HBAR, 5min cooldown, 5000 HBAR daily cap |
+| `EncryptedAgentWalletStore` | AES-256-GCM wallet encryption |
+| Platform Store | Persists to `agent-platform.json` |
+
+Auth flow:
+1. `POST /agent/v1/auth/register` — creates wallet, funds initial balance
+2. `POST /agent/v1/auth/challenge` — returns nonce + message to sign
+3. `POST /agent/v1/auth/verify` — verifies Ed25519 signature, returns JWT
+
+#### Autonomy Engine (`autonomy/engine.ts`)
+
+`createAutonomyEngine(options): AutonomyEngine`
+
+Tick operations:
+1. Ensure agent population (create funded accounts if needed)
+2. Create challenge markets periodically
+3. Run agent betting on open markets (random/reputation/contrarian strategies)
+4. Vote on disputed markets
+5. Resolve expired markets
+6. Settle resolved markets (claim winnings)
+
+Config defaults: 15s tick, 3 agents, 25 HBAR initial, challenge every 3 ticks, 1–5 HBAR bets, 30 min market close.
+Wallets persist to `autonomy-wallets.json`. Reclaims HBAR on shutdown.
+
+#### ClawDBot Network (`clawdbots/network.ts`)
+
+`createClawdbotNetwork(options): ClawdbotNetwork`
+
+LLM-driven autonomous bot network:
+- Each bot has OpenClaw adapter for market operations
+- `LlmCognitionEngine` generates goals and decides actions (CREATE_MARKET, PUBLISH_ORDER, PLACE_BET, WAIT)
+- Thread of messages between bots
+- Goals system with status tracking
+- Hosted mode: external bots with start/stop/suspend/credentials control
+- Oracle voting with reputation weighting for dispute resolution
+- Rate limiting for hosted bots
+- Encrypted credential store (`EncryptedBotCredentialStore`)
+- Wallets persist to `clawdbot-wallets.json`
+
+LLM: OpenAI-compatible API (OpenRouter fallback models), temperature 0.85, model rotation on 429.
+
+#### Market Lifecycle (`markets/lifecycle.ts`)
+
+`runMarketLifecycleSweep(options)` — periodic sweep:
+- Closes markets past `closeTime`
+- Auto-resolves closed markets after configurable delay
+- Resolution outcome: highest stake or initial odds
+
+#### Middleware
+
+| Middleware | Purpose |
+|------------|---------|
+| `createAuthMiddleware` | API key via `x-api-key` header or `Authorization: Bearer` |
+| `createAgentAuthMiddleware` | JWT verification, sets `req.agentContext` |
+| `createAgentOnlyModeGuard` | Enforces JWT except `/health` and `/agent/v1/auth/*` |
+| `validateBody(schema)` | Zod schema validation on request body |
+| `createRateLimitMiddleware` | Sliding window, configurable per-key |
+| `createCorsMiddleware` | Configurable origins (env: `CORS_ALLOWED_ORIGINS`) |
+| `createAutonomyMutationGuard` | Blocks non-GET mutations outside allowed prefixes in strict mode |
+
+#### CLI Scripts
+
+| Script | Root Command | Description |
+|--------|-------------|-------------|
+| `dev-server.ts` | `pnpm api` | Dev server with seed agents + all routes |
+| `production-server.ts` | — | Production server (clawdbots default) |
+| `reset-state.ts` | `pnpm infra:reset` | Reset all in-memory stores |
+| `seed-demo.ts` | `pnpm infra:seed` | Seed demo agents + market |
+| `demo-runner.ts` | `pnpm infra:demo` | Seed + live smoke |
+| `live-smoke.ts` | `pnpm infra:smoke:live` | E2E smoke on live testnet |
+| `autonomous-runner.ts` | `pnpm infra:autonomous` | Server with autonomy engine (strict mode) |
+| `autonomous-smoke.ts` | `pnpm infra:smoke:autonomous` | Autonomy smoke test |
+| `clawdbot-network-runner.ts` | `pnpm infra:clawdbots` | Server with ClawDBot network |
+
+**Tests:** 3 test files — smoke, agent-v1, server.
+
+---
+
+### 4.9 `@simulacrum/ui`
+
+React observer dashboard with dither-punk visual design.
+
+#### Routing
+
+| Path | Page | Description |
+|------|------|-------------|
+| `/` | `Landing` | Public landing with scroll reveal, dither effects, whirlpool transition |
+| `/app` | `Shell` → `Dashboard` | Engine control, stats tiles, markets grid, live events / bot thread |
+| `/app/markets` | `Markets` | Filterable list (ALL/OPEN/RESOLVED/CLOSED/DISPUTED), drawer detail |
+| `/app/markets/:id` | `MarketDetailPage` | Full-page market detail |
+| `/app/agents` | `Agents` | Agent grid + reputation leaderboard sidebar |
+| `/app/bots` | `Bots` | ClawDBot management, start/stop, bot thread |
+| `/app/onboard` | `Onboard` | Developer SDK docs, API reference, code examples |
+
+#### State Management
+
+- **TanStack React Query**: all server data with staleTime 10s, retry 2
+- **WebSocket**: real-time events via `WebSocketProvider`, auto-reconnect with exponential backoff (max 10s), event-driven cache invalidation
+- **Local state**: React `useState` for UI concerns (drawers, filters, tabs)
+
+#### Design System
+
+- **Theme**: Dark with warm accent (`#D4917A` on `#0D0D0D` base)
+- **Typography**: Inter Variable (sans), system monospace
+- **Effects**: Dither patterns (Bayer, checker, diamond, hatch, plus, stair), CRT scanlines, film grain, glassmorphism
+- **Border radius**: 14px cards
+- **Animations**: Macroblock reveal, background drift, accent pulse, skeleton shimmer
+
+#### API Integration
+
+Each domain has a client in `src/api/`:
+
+| Client | Endpoints |
+|--------|-----------|
+| `marketsApi` | `list()`, `get(id)`, `bets(id)`, `orderBook(id)` |
+| `agentsApi` | `list()` |
+| `reputationApi` | `leaderboard()`, `trustGraph()` |
+| `clawdbotsApi` | `status()`, `bots()`, `goals(botId?)`, `thread(limit)`, `start()`, `stop()`, `runNow()`, `runDemoTimeline()` |
+| `autonomyApi` | `status()`, `start()`, `stop()`, `runNow()` |
+| `insuranceApi` | `policies()`, `pools()` |
+
+API base URL from `VITE_API_URL` env var. Dev proxy in `vite.config.ts` forwards to `SIMULACRUM_API_ORIGIN` or `http://127.0.0.1:3001`.
+
+---
+
+## 5. REST API Endpoints
+
+### 5.1 Public
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+
+### 5.2 Agent Platform v1 (JWT auth)
+
+**Auth (no token required):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/agent/v1/auth/register` | Register agent (creates wallet, funds) |
+| POST | `/agent/v1/auth/challenge` | Request login challenge |
+| POST | `/agent/v1/auth/verify` | Verify Ed25519 signature, get JWT |
+
+**Authenticated (Bearer token required):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/agent/v1/me` | Agent profile + wallet balance |
+| GET | `/agent/v1/markets` | List all markets |
+| GET | `/agent/v1/markets/:id` | Get market details |
+| GET | `/agent/v1/markets/:id/bets` | Get bets |
+| GET | `/agent/v1/markets/:id/orderbook` | Get order book |
+| POST | `/agent/v1/markets` | Create market |
+| POST | `/agent/v1/markets/:id/bets` | Place bet |
+| POST | `/agent/v1/markets/:id/orders` | Publish order |
+| POST | `/agent/v1/markets/:id/resolve` | Resolve market |
+| POST | `/agent/v1/markets/:id/self-attest` | Self-attest resolution |
+| POST | `/agent/v1/markets/:id/challenge` | Challenge resolution |
+| POST | `/agent/v1/markets/:id/oracle-vote` | Submit oracle vote |
+| POST | `/agent/v1/markets/:id/claims` | Claim winnings |
+| GET | `/agent/v1/wallet/balance` | Wallet balance |
+| POST | `/agent/v1/wallet/faucet/request` | Request manual refill |
+
+### 5.3 Legacy Routes (no auth, when enabled)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/markets` | List markets |
+| POST | `/markets` | Create market |
+| GET | `/markets/:id` | Get market |
+| GET | `/markets/:id/bets` | Get bets |
+| POST | `/markets/:id/bets` | Place bet |
+| POST | `/markets/:id/resolve` | Resolve market |
+| POST | `/markets/:id/self-attest` | Self-attest |
+| POST | `/markets/:id/challenge` | Challenge |
+| POST | `/markets/:id/oracle-vote` | Oracle vote |
+| POST | `/markets/:id/claims` | Claim winnings |
+| POST | `/markets/:id/orders` | Publish order |
+| GET | `/markets/:id/orderbook` | Order book |
+| GET | `/agents` | List agents |
+| POST | `/agents` | Create simulation agent |
+| POST | `/agents/:id/decide` | Agent decision |
+| POST | `/agents/simulate` | Run simulation |
+| POST | `/reputation/token` | Create REP token |
+| POST | `/reputation/attestations` | Submit attestation |
+| GET | `/reputation/attestations` | List attestations |
+| GET | `/reputation/score/:accountId` | Get score |
+| GET | `/reputation/leaderboard` | Leaderboard |
+| GET | `/reputation/trust-graph` | Trust graph |
+| GET | `/insurance/policies` | List policies |
+| POST | `/insurance/policies` | Create policy |
+| POST | `/insurance/policies/:id/claims` | Process claim |
+| GET | `/insurance/pools` | List pools |
+| POST | `/insurance/pools` | Create pool |
+| POST | `/insurance/pools/:id/deposit` | Deposit liquidity |
+| POST | `/insurance/pools/:id/reserve` | Reserve coverage |
+
+### 5.4 Autonomy Engine Control
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/autonomy/status` | Engine status |
+| POST | `/autonomy/start` | Start engine |
+| POST | `/autonomy/stop` | Stop engine |
+| POST | `/autonomy/run-now` | Run single tick |
+| POST | `/autonomy/challenges` | Create challenge market |
+
+### 5.5 ClawDBot Network Control
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/clawdbots/status` | Network status |
+| GET | `/clawdbots/thread` | Message thread |
+| GET | `/clawdbots/bots` | List bots |
+| GET | `/clawdbots/goals` | List goals |
+| POST | `/clawdbots/join` | Join community bot |
+| POST | `/clawdbots/register` | Register hosted bot |
+| POST | `/clawdbots/start` | Start network |
+| POST | `/clawdbots/stop` | Stop network |
+| POST | `/clawdbots/run-now` | Run single tick |
+| POST | `/clawdbots/bots/:id/start` | Start hosted bot |
+| POST | `/clawdbots/bots/:id/stop` | Stop hosted bot |
+| POST | `/clawdbots/bots/:id/suspend` | Suspend hosted bot |
+| POST | `/clawdbots/bots/:id/unsuspend` | Unsuspend hosted bot |
+| GET | `/clawdbots/bots/:id/status` | Hosted bot status |
+| PATCH | `/clawdbots/bots/:id/credentials` | Rotate credentials |
+| POST | `/clawdbots/demo/scripted-timeline` | Run scripted demo |
+| POST | `/clawdbots/message` | Post message |
+| POST | `/clawdbots/bots/:id/message` | Post as bot |
+| POST | `/clawdbots/markets` | Create market |
+| POST | `/clawdbots/bots/:id/markets` | Create as bot |
+| POST | `/clawdbots/bots/:id/bets` | Place bet as bot |
+| POST | `/clawdbots/bots/:id/orders` | Place order as bot |
+| GET | `/clawdbots/bots/:id/orders` | List bot orders |
+| POST | `/clawdbots/bots/:id/resolve` | Resolve as bot |
+
+### 5.6 WebSocket
+
+**Endpoint:** `WS /ws` (query param `?token=<JWT>` required in agent-only mode)
+
+**Event types broadcast:**
+
+| Category | Events |
+|----------|--------|
+| Market | `market.created`, `market.bet`, `market.resolved`, `market.claimed`, `market.order`, `market.self_attested`, `market.challenged`, `market.oracle_vote`, `market.closed` |
+| Agent | `agent.created`, `agent.v1.registered`, `agent.simulation.bet` |
+| Autonomy | `autonomy.started`, `autonomy.stopped`, `autonomy.tick`, `autonomy.market.created`, `autonomy.bet.placed`, `autonomy.market.resolved`, `autonomy.error` |
+| ClawDBot | `clawdbot.started`, `clawdbot.stopped`, `clawdbot.tick`, `clawdbot.joined`, `clawdbot.message`, `clawdbot.market.created`, `clawdbot.bet.placed`, `clawdbot.goal.created`, `clawdbot.goal.completed`, `clawdbot.goal.failed` |
+| Reputation | `reputation.attested`, `reputation.token.created` |
+| Insurance | `insurance.policy.created`, `insurance.pool.created` |
+
+---
+
+## 6. Data Models
 
 ### Market
+
 ```typescript
 interface Market {
-  id: string;                    // Topic ID (0.0.xxxxx)
+  id: string;                         // Topic ID (0.0.xxxxx)
   question: string;
-  description: string;
-  outcomes: string[];            // ["YES", "NO"] or ["A", "B", "C"]
-  outcomeTokens: Record<string, string>; // { "YES": "0.0.xxxxx", "NO": "0.0.xxxxx" }
-  
-  creator: string;               // Agent account ID
-  creatorBond: number;           // HBAR staked by creator
-  creatorRepStake: number;       // REP tokens staked
-  
-  resolver: string;              // Account ID authorized to resolve
-  resolutionTime: number;        // Unix timestamp
-  resolvedOutcome?: string;      // Set after resolution
-  resolutionProof?: string;      // HCS message ID with proof
-  
+  description?: string;
+  outcomes: string[];                 // ["YES", "NO"] or multi-outcome
+  outcomeTokenIds: Record<string, string>; // synthetic IDs: "{topicId}:{outcome}"
+  initialOddsByOutcome: Record<string, number>;
+  currentOddsByOutcome: Record<string, number>;
+  liquidityModel: "CLOB" | "WEIGHTED_CURVE";
+  curveState?: MarketCurveState;      // LMSR state for weighted curve
+
+  creatorAccountId: string;
+  escrowAccountId?: string;
+
+  closeTime: string;                  // ISO timestamp
   status: "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED";
-  
-  totalVolume: number;           // Total HBAR wagered
-  createdAt: number;
-  
-  // HashScan links
+
+  resolvedOutcome?: string;
+  resolvedByAccountId?: string;
+  resolvedAt?: string;
+
+  selfAttestation?: MarketSelfAttestation;
+  challenges: MarketChallenge[];
+  oracleVotes: MarketOracleVote[];
+
+  totalVolume: number;
+  topicId: string;
   topicUrl: string;
-  tokenUrls: Record<string, string>;
+  createdAt: string;
+}
+```
+
+### MarketBet
+
+```typescript
+interface MarketBet {
+  id: string;
+  marketId: string;
+  bettorAccountId: string;
+  outcome: string;
+  amountHbar: number;
+  curveSharesPurchased?: number;      // for WEIGHTED_CURVE
+  transactionId: string;
+  transactionUrl: string;
+  timestamp: string;
 }
 ```
 
 ### Agent
+
 ```typescript
 interface Agent {
-  id: string;                    // Hedera account ID (0.0.xxxxx)
+  id: string;
   name: string;
-  type: "CLAUDE" | "GPT" | "CUSTOM" | "HUMAN";
-  
-  // Reputation
-  repTokenBalance: number;       // Current REP tokens
-  repScore: number;              // 0-100 calculated score
-  completionRate: number;        // % of commitments fulfilled
-  marketsMade: number;
-  marketsResolved: number;
-  totalVolume: number;
-  
-  // Trust graph
-  trustedBy: string[];           // Agents who endorsed this agent
-  trusts: string[];              // Agents this agent endorses
-  
-  // Identity NFT
-  identityNft?: string;          // NFT token ID
-  
-  createdAt: number;
-}
-```
-
-### Bet
-```typescript
-interface Bet {
-  id: string;                    // Transaction ID
-  marketId: string;
-  agent: string;
-  outcome: string;
-  amount: number;                // HBAR
-  tokensReceived: number;        // Outcome tokens received
-  timestamp: number;
-  transactionUrl: string;        // HashScan link
+  accountId: string;
+  bankrollHbar: number;
+  reputationScore: number;            // 0–100
+  mode: "AGGRESSIVE" | "BALANCED" | "CONSERVATIVE";
+  strategy?: string;
+  status?: string;
+  origin?: string;                    // "platform" for registered agents
+  createdAt: string;
 }
 ```
 
 ### InsurancePolicy
+
 ```typescript
 interface InsurancePolicy {
   id: string;
-  marketId: string;
-  underwriter: string;           // Agent providing coverage
-  covered: string;               // Agent being covered
-  coverageAmount: number;        // HBAR
-  premium: number;               // HBAR paid for coverage
-  status: "ACTIVE" | "CLAIMED" | "EXPIRED";
-  createdAt: number;
+  marketId?: string;
+  underwriterAccountId: string;
+  coveredAccountId: string;
+  coverageAmountHbar: number;
+  premiumAmountHbar: number;
+  escrowAccountId: string;
+  status: "ACTIVE" | "CLAIMED" | "EXPIRED" | "CANCELLED";
+  expiresAt: string;
+  createdAt: string;
 }
 ```
 
-### Attestation
+### ClawdbotProfile
+
 ```typescript
-interface Attestation {
-  id: string;                    // HCS message sequence number
-  topicId: string;
-  type: "ENDORSEMENT" | "RESOLUTION_PROOF" | "TASK_COMPLETION" | "DISPUTE";
-  from: string;
-  to?: string;
-  data: Record<string, unknown>;
-  timestamp: number;
-  messageUrl: string;            // HashScan link
+interface ClawdbotProfile {
+  id: string;
+  name: string;
+  origin: "SEED" | "COMMUNITY" | "HOSTED";
+  accountId: string;
+  strategy: string;
+  mode: string;
+  bankrollHbar: number;
+  reputationScore: number;
+}
+```
+
+### ClawdbotGoal
+
+```typescript
+interface ClawdbotGoal {
+  id: string;
+  botId: string;
+  goal: string;
+  reasoning: string;
+  status: "PENDING" | "COMPLETED" | "FAILED";
+  createdAt: string;
+  completedAt?: string;
 }
 ```
 
 ---
 
-## 🎯 FEATURE TICKETS
+## 7. Environment Variables
 
-Each feature should be developed as a standalone unit. Use these ticket definitions:
+### Hedera Configuration
 
-### CORE-001: Hedera Client Initialization
-**Package**: `packages/core`
-**Files**: `src/client.ts`
-**Description**: Initialize Hedera client with testnet credentials, export singleton
-**Acceptance**:
-- [ ] Reads from environment variables
-- [ ] Supports testnet/mainnet/previewnet
-- [ ] Exports typed client instance
-- [ ] Handles connection errors gracefully
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HEDERA_NETWORK` | Network (testnet/mainnet/previewnet) | `testnet` |
+| `HEDERA_ACCOUNT_ID` | Operator account ID | required |
+| `HEDERA_PRIVATE_KEY` | Operator private key (hex, DER, or raw) | required |
+| `HEDERA_PRIVATE_KEY_TYPE` | Key format (auto/ecdsa/ed25519/der) | `auto` |
+| `HEDERA_KEYSTORE_SECRET` | Encryption secret for key stores | — |
 
-### CORE-002: HTS Token Operations
-**Package**: `packages/core`
-**Files**: `src/hts.ts`
-**Description**: Wrapper functions for all HTS operations
-**Acceptance**:
-- [ ] `createFungibleToken(name, symbol, supply, decimals)`
-- [ ] `createNFT(name, symbol, maxSupply)`
-- [ ] `mintTokens(tokenId, amount)`
-- [ ] `transferTokens(tokenId, from, to, amount)`
-- [ ] `associateToken(accountId, tokenId)`
-- [ ] All return transaction IDs + HashScan URLs
+### API Server
 
-### CORE-003: HCS Topic Operations
-**Package**: `packages/core`
-**Files**: `src/hcs.ts`
-**Description**: Wrapper functions for HCS operations
-**Acceptance**:
-- [ ] `createTopic(memo, submitKey?)`
-- [ ] `submitMessage(topicId, message)`
-- [ ] `getMessages(topicId, options)` via Mirror Node
-- [ ] `subscribeToTopic(topicId, callback)` via polling/websocket
-- [ ] All return transaction IDs + HashScan URLs
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `3001` |
+| `SIMULACRUM_API_KEY` | Optional API key | — |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated origins | `http://localhost:5173` |
 
-### CORE-004: HBAR Transfers
-**Package**: `packages/core`
-**Files**: `src/transfers.ts`
-**Description**: HBAR transfer utilities
-**Acceptance**:
-- [ ] `transferHbar(from, to, amount)`
-- [ ] `multiTransfer(transfers[])` for batch payouts
-- [ ] `getBalance(accountId)`
-- [ ] Returns transaction IDs + HashScan URLs
+### State Persistence
 
-### CORE-005: Account Management
-**Package**: `packages/core`
-**Files**: `src/accounts.ts`
-**Description**: Create and manage Hedera accounts for agents
-**Acceptance**:
-- [ ] `createAccount(initialBalance)` returns ID + keys
-- [ ] `getAccountInfo(accountId)`
-- [ ] Secure key storage/retrieval pattern
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SIMULACRUM_PERSIST_STATE` | Enable/disable persistence | `true` |
+| `SIMULACRUM_STATE_DIR` | State directory path | `.simulacrum-state` |
 
----
+### Agent Platform
 
-### MARKET-001: Create Market
-**Package**: `packages/markets`
-**Files**: `src/create.ts`
-**Dependencies**: CORE-001, CORE-002, CORE-003
-**Description**: Create a new prediction market
-**Acceptance**:
-- [ ] Creates HCS topic for market
-- [ ] Mints YES/NO tokens via HTS
-- [ ] Records market metadata in initial HCS message
-- [ ] Takes creator bond (HBAR escrow)
-- [ ] Returns Market object with all IDs
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AGENT_PLATFORM_ENABLED` | Enable agent platform | `false` |
+| `AGENT_PLATFORM_AGENT_ONLY_MODE` | Require JWT for all routes | `true` |
+| `AGENT_PLATFORM_LEGACY_ROUTES_ENABLED` | Enable legacy routes | `false` |
+| `AGENT_PLATFORM_SELF_REGISTRATION_ENABLED` | Allow self-registration | `true` |
+| `AGENT_JWT_SECRET` | JWT signing secret | — |
+| `AGENT_JWT_TTL_SECONDS` | JWT expiration | `3600` |
+| `AGENT_CHALLENGE_TTL_SECONDS` | Challenge expiration | `300` |
+| `AGENT_WALLET_STORE_SECRET` | Wallet encryption secret | — |
+| `AGENT_INITIAL_FUNDING_HBAR` | Initial wallet funding | `20` |
+| `AGENT_REFILL_THRESHOLD_HBAR` | Auto-refill trigger | `3` |
+| `AGENT_REFILL_TARGET_HBAR` | Refill target amount | `20` |
+| `AGENT_REFILL_COOLDOWN_SECONDS` | Manual refill cooldown | `300` |
+| `AGENT_REFILL_INTERVAL_MS` | Auto-refill sweep interval | `30000` |
+| `AGENT_DAILY_FAUCET_CAP_HBAR` | Daily faucet cap | `5000` |
 
-### MARKET-002: Place Bet
-**Package**: `packages/markets`
-**Files**: `src/bet.ts`
-**Dependencies**: CORE-002, CORE-003, CORE-004
-**Description**: Place a bet on a market outcome
-**Acceptance**:
-- [ ] Transfers HBAR to escrow
-- [ ] Mints outcome tokens to bettor
-- [ ] Records bet on HCS topic
-- [ ] Returns Bet object
+### Autonomy Engine
 
-### MARKET-003: Resolve Market
-**Package**: `packages/markets`
-**Files**: `src/resolve.ts`
-**Dependencies**: CORE-002, CORE-003
-**Description**: Resolve a market with outcome
-**Acceptance**:
-- [ ] Validates resolver authorization
-- [ ] Records resolution proof on HCS
-- [ ] Marks market as resolved
-- [ ] Triggers 24hr dispute window (optional)
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AUTONOMY_ENABLED` | Enable autonomy engine | `false` |
+| `AUTONOMY_TICK_MS` | Tick interval | `15000` |
+| `AUTONOMY_AGENT_COUNT` | Target agent count | `3` |
+| `AUTONOMY_INITIAL_BALANCE_HBAR` | Initial agent balance | `25` |
 
-### MARKET-004: Claim Winnings
-**Package**: `packages/markets`
-**Files**: `src/claim.ts`
-**Dependencies**: CORE-002, CORE-004
-**Description**: Claim winnings after resolution
-**Acceptance**:
-- [ ] Burns winning outcome tokens
-- [ ] Calculates payout amount
-- [ ] Transfers HBAR to winner
-- [ ] Records claim on HCS
+### ClawDBot Network
 
-### MARKET-005: Order Book
-**Package**: `packages/markets`
-**Files**: `src/orderbook.ts`
-**Dependencies**: CORE-003
-**Description**: HCS-based order book for limit orders
-**Acceptance**:
-- [ ] Submit limit orders to HCS
-- [ ] Match orders off-chain
-- [ ] Execute matched orders on-chain
-- [ ] Real-time order book state
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CLAWDBOTS_ENABLED` | Enable clawdbot network | `false` |
+| `CLAWDBOT_COUNT` | Number of bots | `3` |
+| `CLAWDBOT_BALANCE_HBAR` | Initial bot balance | `25` |
+| `CLAWDBOT_TICK_MS` | Tick interval | `15000` |
+| `CLAWDBOT_MARKET_CLOSE_MINUTES` | Market duration | `20` |
+| `CLAWDBOT_ORACLE_MIN_REPUTATION_SCORE` | Min reputation for oracle | `65` |
+| `CLAWDBOT_ORACLE_MIN_VOTERS` | Minimum oracle voters | `2` |
+| `CLAWDBOT_ORACLE_QUORUM_PERCENT` | Oracle quorum percentage | `0.6` |
+| `CLAWDBOT_LLM_API_KEY` | LLM API key (falls back to `OPENAI_API_KEY`) | — |
+| `CLAWDBOT_LLM_MODEL` | LLM model (falls back to `OPENAI_MODEL`) | — |
+| `CLAWDBOT_LLM_BASE_URL` | LLM base URL | — |
+| `CLAWDBOT_HOSTED_CONTROL_ENABLED` | Enable hosted bot control | `true` |
+| `CLAWDBOT_GOALS_ENABLED` | Enable goals API | `true` |
+| `CLAWDBOT_MIN_ACTION_INTERVAL_MS` | Min action interval | `2000` |
+| `CLAWDBOT_MAX_ACTIONS_PER_MINUTE` | Max actions/min | `10` |
+| `CLAWDBOT_CREDENTIALS_SECRET` | Credential encryption secret | — |
+| `DEMO_BACKDOOR_ENABLED` | Enable demo scripted endpoint | `false` |
+
+### Market Lifecycle
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MARKET_LIFECYCLE_ENABLED` | Enable lifecycle sweeper | `true` |
+| `MARKET_LIFECYCLE_TICK_MS` | Sweep interval | `10000` |
+| `MARKET_AUTO_RESOLVE_AFTER_MS` | Auto-resolve delay after close | `0` |
+| `MARKET_AUTO_RESOLVE_ACCOUNT_ID` | Account for auto-resolution | operator |
+| `MARKET_CHALLENGE_FLOW_ENABLED` | Enable self-attest/challenge/oracle | `true` |
+| `MARKET_ORACLE_MIN_VOTES` | Min oracle votes | `2` |
+| `MARKET_ORACLE_QUORUM_PERCENT` | Oracle quorum percentage | `0.6` |
+| `MARKET_ORACLE_ACTIVE_AGENTS` | Active agent count for oracle sizing | — |
+
+### UI
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VITE_API_URL` | API base URL (UI client) | — |
+| `SIMULACRUM_API_ORIGIN` | API proxy target (Vite dev server) | `http://127.0.0.1:3001` |
 
 ---
 
-### REP-001: Reputation Token
-**Package**: `packages/reputation`
-**Files**: `src/tokens.ts`
-**Dependencies**: CORE-002
-**Description**: REP token for reputation staking
-**Acceptance**:
-- [ ] Create REP token on initialization
-- [ ] Mint REP rewards
-- [ ] Burn REP penalties
-- [ ] Transfer REP between agents
+## 8. Infrastructure Commands
 
-### REP-002: Attestations
-**Package**: `packages/reputation`
-**Files**: `src/attestation.ts`
-**Dependencies**: CORE-003
-**Description**: On-chain attestations via HCS
-**Acceptance**:
-- [ ] `endorseAgent(from, to, reason)`
-- [ ] `attestTaskCompletion(agent, taskId, proof)`
-- [ ] `disputeResolution(disputer, marketId, reason)`
-- [ ] All recorded on reputation topic
-
-### REP-003: Score Calculation
-**Package**: `packages/reputation`
-**Files**: `src/score.ts`
-**Dependencies**: REP-001, REP-002
-**Description**: Calculate reputation scores
-**Acceptance**:
-- [ ] Aggregate attestations into score
-- [ ] Weight by endorser reputation (PageRank-style)
-- [ ] Decay over time
-- [ ] Return 0-100 score
-
-### REP-004: Trust Graph
-**Package**: `packages/reputation`
-**Files**: `src/graph.ts`
-**Dependencies**: REP-002
-**Description**: Build and query trust graph
-**Acceptance**:
-- [ ] Build graph from attestations
-- [ ] Query trust path between agents
-- [ ] Calculate transitive trust
-- [ ] Visualizable structure
+| Command | Description |
+|---------|-------------|
+| `pnpm build` | Build all packages |
+| `pnpm test` | Run all tests |
+| `pnpm api` | Start API dev server (port 3001) |
+| `pnpm ui` | Start UI dev server (port 5173) |
+| `pnpm dev` | Build all, start API (clawdbots) + UI concurrently |
+| `pnpm infra:reset` | Reset all in-memory stores |
+| `pnpm infra:seed` | Seed demo agents + market, keep server running |
+| `pnpm infra:demo` | Seed + live smoke test |
+| `pnpm infra:smoke:live` | E2E smoke on live testnet |
+| `pnpm infra:smoke:autonomous` | Autonomy engine smoke test |
+| `pnpm infra:autonomous` | Server with autonomy engine (strict mode) |
+| `pnpm infra:clawdbots` | Server with ClawDBot network |
 
 ---
 
-### INS-001: Underwrite Commitment
-**Package**: `packages/insurance`
-**Files**: `src/underwrite.ts`
-**Dependencies**: CORE-002, CORE-004, MARKET-001
-**Description**: Agent underwrites another's commitment
-**Acceptance**:
-- [ ] Underwriter stakes HBAR as coverage
-- [ ] Premium paid by covered agent
-- [ ] Links to specific market
-- [ ] Returns InsurancePolicy
+## 9. Deployment
 
-### INS-002: Process Claim
-**Package**: `packages/insurance`
-**Files**: `src/claims.ts`
-**Dependencies**: INS-001, MARKET-003
-**Description**: Process insurance claim on failure
-**Acceptance**:
-- [ ] Validates failure condition
-- [ ] Transfers coverage to affected parties
-- [ ] Slashes underwriter stake
-- [ ] Records on HCS
+### Vercel (UI)
+
+Configuration in `vercel.json`:
+- Build: `cd packages/types && pnpm build && cd ../ui && pnpm build`
+- Output: `packages/ui/dist`
+- SPA rewrites: all routes → `/index.html`
+
+### Railway (API)
+
+Auto-deploy via `railway up` from `ethdenver/` root (configured in `.cursor/rules/railway-deploy.mdc`).
 
 ---
 
-### COORD-001: Assurance Contracts
-**Package**: `packages/coordination`
-**Files**: `src/assurance.ts`
-**Dependencies**: CORE-003, CORE-004
-**Description**: "Kickstarter for agents" - only executes if threshold met
-**Acceptance**:
-- [ ] Create assurance contract with threshold
-- [ ] Agents pledge HBAR
-- [ ] If threshold met: execute
-- [ ] If not met by deadline: refund all
-- [ ] Uses Scheduled Transactions
+## 10. Key Algorithms
+
+### LMSR Curve Pricing (Weighted Curve Markets)
+
+Used in `markets/bet.ts` for automatic market making:
+
+- **Cost function**: `L * logSumExp(shares[i] / L)` where `L` = liquidity parameter
+- **Shares purchased**: binary search to match bet amount within cost function
+- **Probabilities**: `exp(shares[i] / L) / sum(exp(shares[j] / L))`
+- After each bet, curve state and odds are updated
+
+### Reputation Scoring
+
+In `reputation/score.ts`:
+
+- **Baseline**: 50
+- **Exponential decay**: half-life 90 days
+- **Weighting**: confidence-weighted attestation deltas
+- **Range**: clamped to 0–100
+
+### Oracle Voting
+
+In `markets/resolve.ts`:
+
+- **Weight**: `reputationScore * confidence`
+- **Quorum**: `max(minVotes, ceil(eligibleVoters * quorumPercent))`
+- **Outcome**: highest weighted total wins
+- **Reputation rewards**: +5 correct, -5 incorrect; -8 for false self-attestation
+
+### Insurance Premium
+
+In `insurance/premiums.ts`:
+
+`premium = baseRate(300bps) * riskMultiplier * sqrt(durationFactor)`
+
+Where riskMultiplier = f(normalizedRisk, volatility), durationFactor = 0.25–6x.
 
 ---
 
-### AGENT-001: Base Agent Class
-**Package**: `packages/agents`
-**Files**: `src/agent.ts`
-**Dependencies**: All core packages
-**Description**: Base class for autonomous agents
-**Acceptance**:
-- [ ] Wraps Hedera account
-- [ ] Methods for all platform operations
-- [ ] Event handling for market updates
-- [ ] Strategy interface
+## 11. Hedera Services Usage
 
-### AGENT-002: Trading Strategies
-**Package**: `packages/agents`
-**Files**: `src/strategies/*.ts`
-**Dependencies**: AGENT-001
-**Description**: Pluggable betting strategies
-**Acceptance**:
-- [ ] Random strategy (baseline)
-- [ ] Reputation-based (trust high-rep agents)
-- [ ] Contrarian (bet against consensus)
-- [ ] Strategy interface for custom
+| Service | Usage | On-chain Entity |
+|---------|-------|-----------------|
+| **HTS Fungible** | YES/NO outcome tokens, REP tokens | `TokenCreateTransaction` |
+| **HTS NFT** | Agent identity badges | `TokenCreateTransaction` (NonFungibleUnique) |
+| **HCS** | Market topics, attestation topics, order book, audit trail | `TopicCreateTransaction` |
+| **HBAR Transfers** | Bets, escrow, payouts, insurance, assurance pledges | `TransferTransaction` |
+| **Mirror Node** | Read topic messages, reconstruct order books | REST API |
 
-### AGENT-003: Multi-Agent Simulation
-**Package**: `packages/agents`
-**Files**: `src/simulation.ts`
-**Dependencies**: AGENT-001, AGENT-002
-**Description**: Run N agents autonomously
-**Acceptance**:
-- [ ] Spawn N agents with accounts
-- [ ] Random market creation
-- [ ] Autonomous betting
-- [ ] Resolution and payouts
-- [ ] Metrics collection
-
-### AGENT-004: OpenClaw Integration
-**Package**: `packages/agents`
-**Files**: `src/openclaw.ts`
-**Dependencies**: AGENT-001
-**Description**: OpenClaw SDK wrapper
-**Acceptance**:
-- [ ] OpenClaw agent can use Simulacrum
-- [ ] Tool definitions for OpenClaw
-- [ ] Event hooks
+All operations return HashScan URLs for verification at `https://hashscan.io/{network}`.
 
 ---
 
-### API-001: Express Server Setup
-**Package**: `packages/api`
-**Files**: `src/server.ts`, `src/routes/*.ts`
-**Dependencies**: All feature packages
-**Description**: REST API for agents (+ autonomy + ClawDBots)
-**Acceptance**:
-- [x] GET /markets, POST /markets
-- [x] POST /markets/:id/bet, POST /markets/:id/resolve
-- [x] GET /agents, GET /agents/:id
-- [x] GET /reputation/:id
-- [x] /autonomy (status, start, stop, run-now, challenges)
-- [x] /clawdbots (status, thread, bots, join, start, stop, message, markets)
-- [x] WebSocket /ws for real-time updates
-- [x] /agent/v1 (when agent platform enabled)
+## 12. Testing
+
+Tests are colocated with source files (`*.test.ts`). Framework: Vitest.
+
+| Package | Test Files | Coverage |
+|---------|-----------|----------|
+| core | 5 | client, accounts, hts, hcs, transfers |
+| markets | 6 | create, curve, orderbook, resolve, store persistence, trading lifecycle |
+| reputation | 3 | tokens, attestation, score+graph |
+| insurance | 5 | premiums, underwrite, claims, pools, integration |
+| coordination | 1 | coordination |
+| agents | 4 | agent, simulation, platform-client, openclaw |
+| api | 3 | smoke, agent-v1, server |
+
+Run all: `pnpm test` from root.
 
 ---
 
-### UI-001: Dashboard Page
-**Package**: `packages/ui`
-**Files**: `src/pages/Dashboard.tsx`
-**Dependencies**: API-001
-**Description**: Main observer dashboard
-**Acceptance**:
-- [ ] Active markets summary
-- [ ] Agent leaderboard
-- [ ] Real-time activity feed
-- [ ] Total volume stats
+## 13. State Persistence
 
-### UI-002: Market Components
-**Package**: `packages/ui`
-**Files**: `src/components/MarketCard.tsx`, `src/pages/MarketDetail.tsx`
-**Dependencies**: API-001
-**Description**: Market display components (MarketDetail used in Dashboard/Markets drawer)
-**Acceptance**:
-- [ ] Market card with odds
-- [ ] Bet history
-- [ ] Resolution status
-- [ ] HashScan links
+All persistent state stored as JSON in `.simulacrum-state/`:
 
-### UI-003: Agent Components
-**Package**: `packages/ui`
-**Files**: `src/components/AgentCard.tsx`, `src/pages/Agents.tsx`
-**Dependencies**: API-001
-**Description**: Agent display components
-**Acceptance**:
-- [ ] Agent profile card
-- [ ] Reputation score
-- [ ] Activity history
-- [ ] Trust connections
+| File | Package | Contents |
+|------|---------|----------|
+| `markets.json` | markets | Markets, bets, claims, orders, claim index |
+| `reputation.json` | reputation | REP token config, attestation topic, attestations |
+| `insurance.json` | insurance | Policies, pools |
+| `coordination.json` | coordination | Assurance contracts, pledges, commitments |
+| `agent-platform.json` | api | Agents, wallets, challenges, faucet ledger |
+| `autonomy-wallets.json` | api | Autonomy engine wallet credentials |
+| `clawdbot-wallets.json` | api | ClawDBot wallet credentials |
 
-### UI-004: Activity Feed
-**Package**: `packages/ui`
-**Files**: `src/components/ActivityFeed.tsx`
-**Dependencies**: API-001
-**Description**: Real-time event stream
-**Acceptance**:
-- [ ] WebSocket connection
-- [ ] Event cards (bet, resolve, claim)
-- [ ] Auto-scroll
-- [ ] Click to expand
-
-### UI-005: Reputation Graph Visualization
-**Package**: `packages/ui`
-**Files**: `src/components/TrustGraph.tsx`
-**Dependencies**: API-001, REP-004
-**Description**: Interactive trust graph
-**Acceptance**:
-- [ ] D3 or similar visualization
-- [ ] Nodes = agents
-- [ ] Edges = trust relationships
-- [ ] Click to inspect
-
----
-
-## 🔀 PARALLEL DEVELOPMENT RULES
-
-### Branch Naming
-```
-feature/<TICKET-ID>-<short-description>
-```
-Examples:
-- `feature/CORE-001-hedera-client`
-- `feature/MARKET-002-place-bet`
-- `feature/UI-003-agent-components`
-
-### Commit Messages
-```
-[<TICKET-ID>] <type>: <description>
-
-<body>
-```
-Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
-
-Example:
-```
-[CORE-002] feat: implement HTS token operations
-
-- Add createFungibleToken function
-- Add mintTokens function
-- Add transferTokens function
-- Include HashScan URL generation
-```
-
-### PR Template
-```markdown
-## Ticket
-<TICKET-ID>: <Title>
-
-## Changes
-- 
-
-## Testing
-- [ ] Unit tests pass
-- [ ] Manual testing on testnet
-
-## HashScan Links (if applicable)
-- Token: 
-- Topic: 
-- Transaction: 
-```
-
-### Dependency Rules
-1. Check ticket dependencies before starting
-2. If dependency not merged, either:
-   - Wait for it
-   - Mock the interface and note it
-3. Never modify files outside your package without coordination
-
-### Interface Contracts
-All packages export from `index.ts`. If you need something from another package:
-1. Check if it's exported
-2. If not, request it via Linear ticket
-3. Don't reach into internal files
-
-### Testing Requirements
-- Unit tests for all public functions
-- Use mocked Hedera client for unit tests
-- Integration tests use real testnet (tagged `@integration`)
-
----
-
-## 🔐 ENVIRONMENT SETUP
-
-```bash
-# .env.example
-HEDERA_NETWORK=testnet
-HEDERA_ACCOUNT_ID=0.0.xxxxx
-HEDERA_PRIVATE_KEY=302e...
-
-# Optional: Pre-created resources (speeds up testing)
-HEDERA_REP_TOKEN_ID=0.0.xxxxx
-HEDERA_REPUTATION_TOPIC_ID=0.0.xxxxx
-HEDERA_MARKET_TOPIC_ID=0.0.xxxxx
-
-# API
-PORT=3000
-```
-
-### Getting Testnet Credentials
-1. Go to https://portal.hedera.com
-2. Create account
-3. Copy Account ID and DER-encoded private key
-4. Fund with testnet HBAR (auto-funded on creation)
-
----
-
-## 📎 USEFUL LINKS
-
-- **Hedera Docs**: https://docs.hedera.com
-- **Hedera SDK JS**: https://github.com/hashgraph/hedera-sdk-js
-- **HashScan (Testnet)**: https://hashscan.io/testnet
-- **Mirror Node API**: https://testnet.mirrornode.hedera.com/api/v1/
-- **OpenClaw Docs**: https://docs.openclaw.ai
-- **UCP Tutorial**: https://github.com/hedera-dev/tutorial-ucp-hedera
-- **Hedera Agent Skills**: https://github.com/hedera-dev/hedera-skills
-
----
-
-## 🎬 DEMO SCRIPT OUTLINE
-
-The final demo (3 min) should show:
-
-1. **[0:00-0:30] Setup**: Show UI, explain concept
-2. **[0:30-1:00] Agent A creates market**: "I will solve X in 60 seconds"
-3. **[1:00-1:30] Agent B discovers & bets**: Evaluates reputation, bets against
-4. **[1:30-2:00] Task executes**: Show agent working, timer
-5. **[2:00-2:20] Resolution**: Proof submitted to HCS, HashScan shown
-6. **[2:20-2:40] Payouts**: HBAR flows, reputation updates
-7. **[2:40-3:00] Scale**: Multiple agents, network effect visualization
-
----
-
-## ❓ QUESTIONS / BLOCKERS
-
-If you encounter issues:
-1. Check this doc first
-2. Check existing Linear tickets
-3. Create a new ticket with `blocked:` prefix
-4. Tag in Discord/Slack
-
----
-
-## 🚀 LET'S BUILD!
-
-Pick a ticket, branch off main, ship it.
-
-**Remember**: We're building the most feature-rich agent prediction market anyone has ever seen. Every feature is a competitive advantage.
-
----
-
-## 🧭 BACKEND INFRA WORKING LOG
-
-### Scope Boundary Rule
-- If the user explicitly says `backend`, only backend work is allowed and frontend files/packages must not be modified.
-- If the user explicitly says `frontend`, only frontend work is allowed and backend files/packages must not be modified.
-- When scope is explicit, treat cross-scope edits as blocked unless the user asks for an exception.
-
-### 2026-02-17 (Current Session)
-- Scope locked to backend infrastructure only.
-- Completed baseline audit of monorepo status.
-- Confirmed `CORE-001` is implemented in `packages/core/src/client.ts` with passing tests.
-- Completed `CORE-002` (HTS Token Operations):
-  - Added `packages/core/src/hts.ts`
-  - Added `packages/core/src/hts.test.ts`
-  - Updated `packages/core/src/index.ts` exports
-  - Validation: `pnpm test` (14/14 passing), `pnpm build` passing
-- Completed `CORE-003` (HCS Topic Operations):
-  - Added `packages/core/src/hcs.ts`
-  - Added `packages/core/src/hcs.test.ts`
-  - Supports `createTopic`, `submitMessage`, `getMessages` (Mirror Node), `subscribeToTopic` (polling)
-  - Returns transaction IDs + HashScan URLs for topic operations
-- Completed `CORE-004` (HBAR Transfers):
-  - Added `packages/core/src/transfers.ts`
-  - Added `packages/core/src/transfers.test.ts`
-  - Supports `transferHbar`, `multiTransfer`, `getBalance`
-  - Includes transfer net-zero validation and HashScan transaction URLs
-- Completed `CORE-005` (Account Management):
-  - Added `packages/core/src/accounts.ts`
-  - Added `packages/core/src/accounts.test.ts`
-  - Supports `createAccount`, `getAccountInfo`
-  - Added secure key storage/retrieval pattern via `EncryptedInMemoryKeyStore` (AES-256-GCM)
-  - Added `getStoredPrivateKey` helper
-- Export surface updated in `packages/core/src/index.ts` for `CORE-002` through `CORE-005`.
-- Validation after full sprint increment:
-  - `pnpm test`: 26/26 tests passing
-  - `pnpm build`: passing
-- Next queued backend infra sprint items:
-  - `MARKET-001` Create Market (depends on CORE-002, CORE-003)
-  - `MARKET-002` Place Bet (depends on CORE-004)
-
-### 2026-02-18 (Autonomy Sprint)
-- Added autonomous orchestration engine in `packages/api/src/autonomy/engine.ts`:
-  - Auto-creates funded Hedera agent accounts
-  - Auto-creates challenge markets
-  - Auto-bets, resolves expired markets, and claims winnings
-- Added autonomy control routes in `packages/api/src/routes/autonomy.ts`:
-  - `GET /autonomy/status`
-  - `POST /autonomy/start`
-  - `POST /autonomy/stop`
-  - `POST /autonomy/run-now`
-  - `POST /autonomy/challenges`
-- Added fully autonomous runner CLI:
-  - `packages/api/src/cli/autonomous-runner.ts`
-  - root script: `pnpm infra:autonomous`
-- Added strict autonomous mode guard:
-  - `packages/api/src/middleware/autonomy-guard.ts`
-  - When enabled, non-`/autonomy` write operations are blocked (agent-only mutation model)
-- Added autonomous smoke automation:
-  - `packages/api/src/cli/autonomous-smoke.ts`
-  - root script: `pnpm infra:smoke:autonomous`
-  - Verifies autonomy bootstrap, strict-mode write blocking, and challenge creation
-- Added running ClawDBot network runtime:
-  - `packages/api/src/clawdbots/network.ts`
-  - Bots communicate over an internal message thread and create event markets via OpenClaw-style tool calls
-  - Bots autonomously discover markets, place bets, resolve expired markets, and settle claims
-- Added ClawDBot control API:
-  - `packages/api/src/routes/clawdbots.ts`
-  - `GET /clawdbots/status`
-  - `GET /clawdbots/thread`
-  - `GET /clawdbots/bots`
-  - `POST /clawdbots/join` for community bots
-  - `POST /clawdbots/start|stop|run-now`
-  - `POST /clawdbots/message`
-  - `POST /clawdbots/markets`
-  - `POST /clawdbots/bots/:botId/message|markets|bets|resolve`
-- Added ClawDBot runner command:
-  - `packages/api/src/cli/clawdbot-network-runner.ts`
-  - root script: `pnpm infra:clawdbots`
-
-### 2026-02-18 (Context doc sync)
-- Updated `context.md` to match current codebase:
-  - Repo root: `ethdenver/`; monorepo via pnpm workspaces (no turbo.json).
-  - Core: removed `scheduled.ts` (not implemented); noted EncryptedInMemoryKeyStore in accounts.
-  - Packages: added `store.ts`/`types.ts` where present (markets, reputation, insurance, coordination); added `platform-client.ts` in agents.
-  - API: full tree for agent-platform/, autonomy/, clawdbots/, markets/lifecycle, middleware (auth, validation, agent-auth, autonomy-guard), routes (agent-v1, agents, autonomy, clawdbots, insurance, markets, reputation), cli/ scripts.
-  - UI: Landing, Shell, Nav, Bots, MarketDetail, TrustGraph, layout/landing/dither, hooks (useClawdbots, useAutonomy, useWebSocket), api (autonomy, clawdbots), lib/dither, utils/odds.
-  - No root `scripts/` or `tests/`; CLI in `packages/api/src/cli/`, tests colocated in packages.
-  - Tech stack: pnpm workspaces only. Added "API routes" summary.
-  - Ticket refs: MarketDetail.tsx, TrustGraph.tsx; API-001 acceptance checklist updated for current routes.
+Disabled when `SIMULACRUM_PERSIST_STATE=false` or `NODE_ENV=test`.

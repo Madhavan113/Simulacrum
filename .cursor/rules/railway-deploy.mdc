@@ -1,0 +1,14 @@
+---
+description: After pushing to git, always deploy to Railway
+alwaysApply: true
+---
+
+# Railway Deployment
+
+After every `git push`, run `railway up` from the `ethdenver/` workspace root to deploy the API to Railway.
+
+```bash
+cd /Users/madhavanp/Downloads/hederamarkets/ethdenver && railway up
+```
+
+Do not wait for user to ask — deploy automatically after a successful push.

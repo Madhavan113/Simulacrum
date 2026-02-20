@@ -329,8 +329,12 @@ export function subscribeToTopic(
       });
 
       for (const message of messages) {
-        callback(message);
         nextSequenceNumber = Math.max(nextSequenceNumber, message.sequenceNumber + 1);
+        try {
+          callback(message);
+        } catch (error) {
+          options.onError?.(asHederaTopicError("Subscription callback threw an error.", error));
+        }
       }
     } catch (error) {
       options.onError?.(asHederaTopicError("Failed while polling subscribed topic.", error));

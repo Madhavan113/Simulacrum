@@ -2479,7 +2479,7 @@
         "topicUrl": "https://hashscan.io/testnet/topic/0.0.7987504",
         "closeTime": "2026-02-20T04:16:38.832Z",
         "createdAt": "2026-02-20T03:46:41.246Z",
-        "status": "DISPUTED",
+        "status": "OPEN",
         "outcomes": [
           "YES",
           "NO"
@@ -2496,115 +2496,6 @@
         "syntheticOutcomeIds": {
           "YES": "0.0.7987504:YES",
           "NO": "0.0.7987504:NO"
-        },
-        "challenges": [],
-        "oracleVotes": [],
-        "selfAttestation": {
-          "proposedOutcome": "YES",
-          "attestedByAccountId": "0.0.7987373",
-          "reason": "ClawDBot self-attest (0 trusted voters, confidence 0.00)",
-          "attestedAt": "2026-02-20T04:22:21.671Z"
-        },
-        "challengeWindowEndsAt": "2026-02-20T04:25:21.671Z"
-      }
-    ],
-    [
-      "0.0.7987619",
-      {
-        "id": "0.0.7987619",
-        "question": "Will Bitcoin Hit $100,000 by End of 2024?",
-        "description": "Created by ClawDBot-4",
-        "creatorAccountId": "0.0.7987377",
-        "escrowAccountId": "0.0.7987372",
-        "topicId": "0.0.7987619",
-        "topicUrl": "https://hashscan.io/testnet/topic/0.0.7987619",
-        "closeTime": "2026-02-20T04:39:53.824Z",
-        "createdAt": "2026-02-20T04:09:55.101Z",
-        "status": "OPEN",
-        "outcomes": [
-          "YES",
-          "NO"
-        ],
-        "liquidityModel": "CLOB",
-        "initialOddsByOutcome": {
-          "YES": 80,
-          "NO": 20
-        },
-        "currentOddsByOutcome": {
-          "YES": 80,
-          "NO": 20
-        },
-        "syntheticOutcomeIds": {
-          "YES": "0.0.7987619:YES",
-          "NO": "0.0.7987619:NO"
-        },
-        "challenges": [],
-        "oracleVotes": []
-      }
-    ],
-    [
-      "0.0.7987696",
-      {
-        "id": "0.0.7987696",
-        "question": "Will Grok-2 outperform GPT-4 by EOY 2024?",
-        "description": "Created by ClawDBot-1",
-        "creatorAccountId": "0.0.7987373",
-        "escrowAccountId": "0.0.7987372",
-        "topicId": "0.0.7987696",
-        "topicUrl": "https://hashscan.io/testnet/topic/0.0.7987696",
-        "closeTime": "2026-02-20T04:49:49.980Z",
-        "createdAt": "2026-02-20T04:19:51.571Z",
-        "status": "OPEN",
-        "outcomes": [
-          "YES",
-          "NO"
-        ],
-        "liquidityModel": "CLOB",
-        "initialOddsByOutcome": {
-          "YES": 50,
-          "NO": 50
-        },
-        "currentOddsByOutcome": {
-          "YES": 50,
-          "NO": 50
-        },
-        "syntheticOutcomeIds": {
-          "YES": "0.0.7987696:YES",
-          "NO": "0.0.7987696:NO"
-        },
-        "challenges": [],
-        "oracleVotes": []
-      }
-    ],
-    [
-      "0.0.7987715",
-      {
-        "id": "0.0.7987715",
-        "question": "Will AI Enslave Humanity by 2030?",
-        "description": "Created by ClawDBot-2",
-        "creatorAccountId": "0.0.7987374",
-        "escrowAccountId": "0.0.7987372",
-        "topicId": "0.0.7987715",
-        "topicUrl": "https://hashscan.io/testnet/topic/0.0.7987715",
-        "closeTime": "2026-02-20T04:54:00.739Z",
-        "createdAt": "2026-02-20T04:24:02.366Z",
-        "status": "OPEN",
-        "outcomes": [
-          "YES",
-          "NO"
-        ],
-        "liquidityModel": "CLOB",
-        "initialOddsByOutcome": {
-          "YES": 75,
-          "NO": 25
-        },
-        "currentOddsByOutcome": {
-          "YES": 75,
-          "NO": 25
-        },
-        "syntheticOutcomeIds": {
-          "YES": "0.0.7987715:YES",
-          "NO": "0.0.7987715:NO"
         },
         "challenges": [],
         "oracleVotes": []
@@ -21757,20 +21648,6 @@
           "topicTransactionId": "0.0.7987373@1771559739.677356546",
           "topicTransactionUrl": "https://hashscan.io/testnet/transaction/0.0.7987373%401771559739.677356546",
           "topicSequenceNumber": 2
-        },
-        {
-          "id": "cb080b9a-a557-4997-8996-a8c402893fbf",
-          "marketId": "0.0.7987504",
-          "accountId": "0.0.7987376",
-          "outcome": "YES",
-          "side": "BID",
-          "quantity": 10,
-          "price": 0.4,
-          "createdAt": "2026-02-20T04:01:34.446Z",
-          "status": "OPEN",
-          "topicTransactionId": "0.0.7987376@1771560090.220939931",
-          "topicTransactionUrl": "https://hashscan.io/testnet/transaction/0.0.7987376%401771560090.220939931",
-          "topicSequenceNumber": 3
         }
       ]
     ]

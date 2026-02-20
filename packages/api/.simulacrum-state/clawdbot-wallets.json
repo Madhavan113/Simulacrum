@@ -1,0 +1,29 @@
+{
+  "wallets": [
+    {
+      "accountId": "0.0.7987373",
+      "privateKey": "302e020100300506032b657004220420f9fa28d72cef738ec371f3cc3610c1f28c76e2229e90ee76fad0f463abf2cd79",
+      "privateKeyType": "der"
+    },
+    {
+      "accountId": "0.0.7987374",
+      "privateKey": "302e020100300506032b657004220420c75c28cb41e410ca376d811d08ae6f3b397667f65f8cc932895684d5bcde738c",
+      "privateKeyType": "der"
+    },
+    {
+      "accountId": "0.0.7987376",
+      "privateKey": "302e020100300506032b657004220420940dcc88e758a773a294e6965b2855af44526bb211961ae1da6d3adae4435bf4",
+      "privateKeyType": "der"
+    },
+    {
+      "accountId": "0.0.7987377",
+      "privateKey": "302e020100300506032b657004220420707d83b50f4e0974e1ee801163d10053758445ff5e034884c46b74a7de4eb459",
+      "privateKeyType": "der"
+    }
+  ],
+  "escrow": {
+    "accountId": "0.0.7987372",
+    "privateKey": "302e020100300506032b6570042204204357e5d555a2ce46c7c79fd73e6378c3deedaacb0e60d4cc658c06bb52113800",
+    "privateKeyType": "der"
+  }
+}

@@ -1,7 +1,7 @@
 # Bugbot Index — Simulacrum Project
 
 **Role:** Bookkeeper and PR verification agent.  
-**Scope:** ~24k lines across `ethdenver/packages/*`.  
+**Scope:** 9 packages across `ethdenver/packages/*` (types, core, markets, reputation, insurance, coordination, agents, api, ui).  
 **Goal:** Index the project against the documented spec and verify incoming changes are PR-approved.
 
 ---
@@ -23,15 +23,15 @@
 
 | Package | Key source files (entrypoints / domain) |
 |---------|----------------------------------------|
-| **core** | `client.ts`, `hts.ts`, `hcs.ts`, `transfers.ts`, `accounts.ts`, `persistence.ts`, `validation.ts`, `index.ts` |
+| **types** | `index.ts` (shared type definitions: Market, Agent, ClawDBot, Insurance, WsEvent) |
+| **core** | `client.ts`, `hedera-utils.ts`, `hts.ts`, `hcs.ts`, `transfers.ts`, `accounts.ts`, `persistence.ts`, `validation.ts`, `index.ts` |
 | **markets** | `create.ts`, `bet.ts`, `resolve.ts`, `claim.ts`, `orderbook.ts`, `store.ts`, `types.ts`, `index.ts` |
 | **reputation** | `tokens.ts`, `attestation.ts`, `score.ts`, `graph.ts`, `store.ts`, `types.ts`, `index.ts` |
 | **insurance** | `underwrite.ts`, `claims.ts`, `premiums.ts`, `pools.ts`, `store.ts`, `types.ts`, `index.ts` |
 | **coordination** | `assurance.ts`, `commitment.ts`, `schelling.ts`, `store.ts`, `types.ts`, `index.ts` |
 | **agents** | `agent.ts`, `platform-client.ts`, `simulation.ts`, `openclaw.ts`, `strategies/*.ts`, `index.ts` |
-| **api** | `server.ts`, `events.ts`, `index.ts`; `routes/*.ts`; `middleware/*.ts`; `agent-platform/*`, `autonomy/engine.ts`, `clawdbots/*`, `markets/lifecycle.ts`, `cli/*` |
-| **ui** | `App.tsx`, `main.tsx`; `pages/*.tsx`; `components/**/*.tsx`; `hooks/*.ts`; `api/*.ts`; `utils/odds.ts`, `lib/dither.ts` |
-| **types** | `index.ts` (shared types only) |
+| **api** | `server.ts`, `events.ts`, `wallet-persistence.ts`, `index.ts`; `routes/*.ts`; `middleware/*.ts`; `agent-platform/*`, `autonomy/engine.ts`, `clawdbots/*`, `markets/lifecycle.ts`, `cli/*` |
+| **ui** | `App.tsx`, `main.tsx`; `pages/*.tsx`; `components/**/*.tsx`; `hooks/*.ts`; `api/*.ts`; `utils/odds.ts`, `lib/dither.ts`; `styles/*.css` |
 
 Tests are colocated: `*.test.ts` / `*.test.tsx` next to source. No root `tests/` folder.
 
@@ -156,4 +156,4 @@ Use these when verifying that a change doesn’t break infra or demo flows.
 - When new tickets are added to `linear.md` / `context.md`, add a row to §3 and extend §4 if conventions change.
 - Keep §1 (spec sources) and §4 (PR checklist) in sync with `linear.md` and `context.md`.
 
-Last updated: 2026-02-18 (initial index from context.md + linear.md + repo layout).
+Last updated: 2026-02-19 (full codebase audit sync with context.md).

@@ -6,7 +6,7 @@ export class ValidationError extends Error {
 }
 
 export function validateNonEmptyString(value: string, field: string): void {
-  if (value.trim().length === 0) {
+  if (value == null || typeof value !== "string" || value.trim().length === 0) {
     throw new ValidationError(`${field} must be a non-empty string.`);
   }
 }

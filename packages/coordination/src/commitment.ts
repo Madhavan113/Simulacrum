@@ -113,6 +113,10 @@ export async function joinCommitment(
     throw new CoordinationError(`Commitment ${commitmentId} deadline has passed.`);
   }
 
+  if (commitment.status === "COMPLETED" || commitment.status === "FAILED") {
+    throw new CoordinationError(`Commitment ${commitmentId} is no longer accepting participants.`);
+  }
+
   if (!commitment.participantIds.includes(participantAccountId)) {
     commitment.participantIds.push(participantAccountId);
   }
@@ -162,6 +166,16 @@ export async function completeCommitment(
 
   if (!commitment) {
     throw new CoordinationError(`Commitment ${commitmentId} was not found.`);
+  }
+
+  if (commitment.status === "FAILED") {
+    throw new CoordinationError(`Commitment ${commitmentId} has failed and cannot be completed.`);
+  }
+
+  if (Date.now() > Date.parse(commitment.deadline)) {
+    commitment.status = "FAILED";
+    persistCoordinationStore(store);
+    throw new CoordinationError(`Commitment ${commitmentId} deadline has passed.`);
   }
 
   if (!commitment.participantIds.includes(participantAccountId)) {

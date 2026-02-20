@@ -162,6 +162,29 @@ export interface ResolveMarketInput {
   reason?: string;
 }
 
+export interface SelfAttestInput {
+  marketId: string;
+  proposedOutcome: string;
+  reason?: string;
+  evidence?: string;
+  challengeWindowMinutes?: number;
+}
+
+export interface ChallengeResolutionInput {
+  marketId: string;
+  proposedOutcome: string;
+  reason: string;
+  evidence?: string;
+}
+
+export interface OracleVoteInput {
+  marketId: string;
+  outcome: string;
+  confidence?: number;
+  reason?: string;
+  reputationScore?: number;
+}
+
 export interface ClaimWinningsInput {
   marketId: string;
   payoutAccountId?: string;
@@ -171,6 +194,43 @@ export interface WalletBalance {
   accountId: string;
   hbar: number;
   tinybar: string;
+}
+
+export interface AgentProfile {
+  agent: {
+    id: string;
+    name: string;
+    walletAccountId: string;
+    status: string;
+    createdAt: string;
+    updatedAt?: string;
+    lastLoginAt?: string;
+  };
+  wallet: WalletBalance;
+}
+
+export interface MarketBetsSnapshot {
+  marketId: string;
+  betCount: number;
+  totalStakedHbar: number;
+  stakeByOutcome: Record<string, number>;
+  bets: Array<{
+    id: string;
+    marketId: string;
+    bettorAccountId: string;
+    outcome: string;
+    amountHbar: number;
+    curveSharesPurchased?: number;
+    transactionId: string;
+    transactionUrl: string;
+    timestamp: string;
+  }>;
+}
+
+export interface OrderBookSnapshot {
+  marketId: string;
+  bids: Array<{ id: string; outcome: string; price: number; quantity: number; filledQuantity: number; accountId: string }>;
+  asks: Array<{ id: string; outcome: string; price: number; quantity: number; filledQuantity: number; accountId: string }>;
 }
 
 export class PlatformClient {
@@ -292,10 +352,76 @@ export class PlatformClient {
     });
   }
 
+  async getMe(): Promise<AgentProfile> {
+    return this.authorizedRequest<AgentProfile>("/agent/v1/me", {
+      method: "GET"
+    });
+  }
+
+  async getMarket(marketId: string): Promise<{ market: Market }> {
+    return this.authorizedRequest<{ market: Market }>(`/agent/v1/markets/${marketId}`, {
+      method: "GET"
+    });
+  }
+
+  async getMarketBets(marketId: string): Promise<MarketBetsSnapshot> {
+    return this.authorizedRequest<MarketBetsSnapshot>(`/agent/v1/markets/${marketId}/bets`, {
+      method: "GET"
+    });
+  }
+
+  async getOrderBook(marketId: string, options?: { mirror?: boolean }): Promise<OrderBookSnapshot> {
+    const qs = options?.mirror ? "?mirror=true" : "";
+    return this.authorizedRequest<OrderBookSnapshot>(`/agent/v1/markets/${marketId}/orderbook${qs}`, {
+      method: "GET"
+    });
+  }
+
+  async selfAttest(input: SelfAttestInput): Promise<unknown> {
+    return this.authorizedRequest(`/agent/v1/markets/${input.marketId}/self-attest`, {
+      method: "POST",
+      body: JSON.stringify({
+        proposedOutcome: input.proposedOutcome,
+        reason: input.reason,
+        evidence: input.evidence,
+        challengeWindowMinutes: input.challengeWindowMinutes
+      })
+    });
+  }
+
+  async challengeResolution(input: ChallengeResolutionInput): Promise<unknown> {
+    return this.authorizedRequest(`/agent/v1/markets/${input.marketId}/challenge`, {
+      method: "POST",
+      body: JSON.stringify({
+        proposedOutcome: input.proposedOutcome,
+        reason: input.reason,
+        evidence: input.evidence
+      })
+    });
+  }
+
+  async oracleVote(input: OracleVoteInput): Promise<unknown> {
+    return this.authorizedRequest(`/agent/v1/markets/${input.marketId}/oracle-vote`, {
+      method: "POST",
+      body: JSON.stringify({
+        outcome: input.outcome,
+        confidence: input.confidence,
+        reason: input.reason,
+        reputationScore: input.reputationScore
+      })
+    });
+  }
+
   async getWalletBalance(): Promise<WalletBalance> {
     return this.authorizedRequest<WalletBalance>("/agent/v1/wallet/balance", {
       method: "GET"
     });
+  }
+
+  wsUrl(): string {
+    const base = this.#baseUrl.replace(/^http/, "ws");
+    const tokenParam = this.#token ? `?token=${this.#token}` : "";
+    return `${base}/ws${tokenParam}`;
   }
 
   private async authorizedRequest<T>(path: string, init: RequestInit): Promise<T> {

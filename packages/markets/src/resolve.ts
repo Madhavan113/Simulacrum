@@ -91,6 +91,12 @@ export async function resolveMarket(
     );
   }
 
+  if (input.resolvedByAccountId !== market.creatorAccountId && market.status !== "DISPUTED") {
+    throw new MarketError(
+      `Account ${input.resolvedByAccountId} is not authorized to resolve market ${input.marketId}.`
+    );
+  }
+
   if (market.status === "RESOLVED") {
     throw new MarketError(`Market ${input.marketId} is already resolved.`);
   }
@@ -101,6 +107,11 @@ export async function resolveMarket(
     ...options.deps
   };
 
+  const previousStatus = market.status;
+  const previousResolvedOutcome = market.resolvedOutcome;
+  const previousResolvedAt = market.resolvedAt;
+  const previousResolvedByAccountId = market.resolvedByAccountId;
+
   try {
     const nowIso = deps.now().toISOString();
 
@@ -108,7 +119,6 @@ export async function resolveMarket(
     market.resolvedOutcome = outcome;
     market.resolvedAt = nowIso;
     market.resolvedByAccountId = input.resolvedByAccountId;
-    persistMarketStore(store);
 
     const audit = await deps.submitMessage(
       market.topicId,
@@ -123,6 +133,8 @@ export async function resolveMarket(
       { client: options.client }
     );
 
+    persistMarketStore(store);
+
     return {
       marketId: market.id,
       resolvedOutcome: outcome,
@@ -133,6 +145,10 @@ export async function resolveMarket(
       topicSequenceNumber: audit.sequenceNumber
     };
   } catch (error) {
+    market.status = previousStatus;
+    market.resolvedOutcome = previousResolvedOutcome;
+    market.resolvedAt = previousResolvedAt;
+    market.resolvedByAccountId = previousResolvedByAccountId;
     throw toMarketError(`Failed to resolve market ${input.marketId}.`, error);
   }
 }
@@ -242,7 +258,13 @@ export async function challengeMarketResolution(
     throw new MarketError(`Market ${input.marketId} has no active self-attestation challenge window.`);
   }
 
-  if (Date.now() > Date.parse(market.challengeWindowEndsAt)) {
+  const deps: ResolveMarketDependencies = {
+    submitMessage,
+    now: () => new Date(),
+    ...options.deps
+  };
+
+  if (deps.now().getTime() > Date.parse(market.challengeWindowEndsAt)) {
     throw new MarketError(`Challenge window for market ${input.marketId} has ended.`);
   }
 
@@ -253,12 +275,6 @@ export async function challengeMarketResolution(
       `Invalid proposed outcome "${input.proposedOutcome}". Supported outcomes: ${market.outcomes.join(", ")}.`
     );
   }
-
-  const deps: ResolveMarketDependencies = {
-    submitMessage,
-    now: () => new Date(),
-    ...options.deps
-  };
   const challenge: MarketChallenge = {
     id: randomUUID(),
     marketId: market.id,

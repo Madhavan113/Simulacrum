@@ -123,6 +123,7 @@ export async function pledgeToAssurance(
 
   if (Date.now() > Date.parse(contract.deadline)) {
     contract.status = "FAILED";
+    persistCoordinationStore(store);
     throw new CoordinationError(`Assurance contract ${contractId} deadline has passed.`);
   }
 

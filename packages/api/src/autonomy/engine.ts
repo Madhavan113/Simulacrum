@@ -22,6 +22,7 @@ import {
   claimWinnings,
   createMarket,
   getMarketStore,
+  persistMarketStore,
   placeBet,
   resolveMarket,
   submitOracleVote,
@@ -154,6 +155,8 @@ export class AutonomyEngine {
   #lastTickAt: Date | null = null;
   #lastError: string | null = null;
   #activeTick = false;
+  #starting = false;
+  #settleFailedMarkets = new Set<string>();
 
   constructor(options: AutonomyEngineOptions) {
     this.#eventBus = options.eventBus;
@@ -202,19 +205,25 @@ export class AutonomyEngine {
   }
 
   async start(): Promise<void> {
-    if (!this.#enabled || this.#running) {
+    if (!this.#enabled || this.#running || this.#starting) {
       return;
     }
 
-    await this.ensureSharedEscrow();
-    await this.ensureAgentPopulation();
-    await this.runTick();
+    this.#starting = true;
 
-    this.#interval = setInterval(() => {
-      void this.runTick();
-    }, this.#tickMs);
-    this.#running = true;
-    this.#eventBus.publish("autonomy.started", this.getStatus());
+    try {
+      await this.ensureSharedEscrow();
+      await this.ensureAgentPopulation();
+      await this.runTick();
+
+      this.#running = true;
+      this.#interval = setInterval(() => {
+        void this.runTick();
+      }, this.#tickMs);
+      this.#eventBus.publish("autonomy.started", this.getStatus());
+    } finally {
+      this.#starting = false;
+    }
   }
 
   async stop(): Promise<void> {
@@ -731,15 +740,22 @@ export class AutonomyEngine {
     );
 
     for (const market of resolved) {
+      if (this.#settleFailedMarkets.has(market.id)) {
+        continue;
+      }
+
       const bets = store.bets.get(market.id) ?? [];
 
       if (bets.length === 0) {
+        market.status = "SETTLED" as Market["status"];
+        persistMarketStore(store);
         continue;
       }
 
       const escrowClient = this.clientForAccount(market.escrowAccountId);
 
       if (!escrowClient) {
+        this.#settleFailedMarkets.add(market.id);
         this.#eventBus.publish("autonomy.market.claim_error", {
           marketId: market.id,
           error: `No signer available for escrow account ${market.escrowAccountId}`
@@ -752,6 +768,7 @@ export class AutonomyEngine {
         .map((bet) => bet.bettorAccountId);
 
       const uniqueWinners = Array.from(new Set(winners));
+      let permanentFailure = false;
 
       for (const winnerAccountId of uniqueWinners) {
         try {
@@ -780,12 +797,18 @@ export class AutonomyEngine {
             continue;
           }
 
+          permanentFailure = true;
           this.#eventBus.publish("autonomy.market.claim_error", {
             marketId: market.id,
             accountId: winnerAccountId,
             error: message
           });
         }
+      }
+
+      if (!permanentFailure) {
+        market.status = "SETTLED" as Market["status"];
+        persistMarketStore(store);
       }
     }
   }

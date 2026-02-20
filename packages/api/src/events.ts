@@ -32,7 +32,11 @@ export function createEventBus(historySize = DEFAULT_HISTORY_SIZE): ApiEventBus 
       }
 
       for (const listener of listeners) {
-        listener(event);
+        try {
+          listener(event);
+        } catch (error) {
+          console.error("Event listener threw an error:", error);
+        }
       }
 
       return event;
