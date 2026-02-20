@@ -1827,12 +1827,43 @@ export class ClawdbotNetwork {
         const wallet = persisted.wallets[index]!;
         const sequence = index + 1;
         const strategy = this.strategyForIndex(sequence);
+
+        const agentWallet: AgentWallet = {
+          accountId: wallet.accountId,
+          privateKey: wallet.privateKey,
+          privateKeyType: wallet.privateKeyType
+        };
+
+        let actualBalance = this.#initialBotBalanceHbar;
+        try {
+          const balance = await getBalance(wallet.accountId, {
+            client: this.getClient(agentWallet)
+          });
+          actualBalance = balance.hbar;
+
+          const minBalance = this.#initialBotBalanceHbar * 0.25;
+          if (balance.hbar < minBalance) {
+            const topUp = this.#initialBotBalanceHbar - balance.hbar;
+            await transferHbar(this.#operatorAccountId, wallet.accountId, topUp, {
+              client: this.getOperatorClient()
+            });
+            actualBalance = balance.hbar + topUp;
+            console.log(
+              `[clawdbot] Topped up ${wallet.accountId} with ${topUp.toFixed(2)} HBAR (was ${balance.hbar.toFixed(2)}).`
+            );
+          }
+        } catch (error) {
+          console.warn(
+            `[clawdbot] Could not check/top-up balance for ${wallet.accountId}: ${error instanceof Error ? error.message : error}`
+          );
+        }
+
         const agent = new BaseAgent(
           {
             id: randomUUID(),
             name: `ClawDBot-${sequence}`,
             accountId: wallet.accountId,
-            bankrollHbar: this.#initialBotBalanceHbar,
+            bankrollHbar: Math.max(1, Math.round(actualBalance)),
             reputationScore: 50
           },
           strategy
@@ -1840,16 +1871,8 @@ export class ClawdbotNetwork {
 
         const runtime: RuntimeBot = {
           agent,
-          wallet: {
-            accountId: wallet.accountId,
-            privateKey: wallet.privateKey,
-            privateKeyType: wallet.privateKeyType
-          },
-          adapter: this.createAdapter(agent, {
-            accountId: wallet.accountId,
-            privateKey: wallet.privateKey,
-            privateKeyType: wallet.privateKeyType
-          }),
+          wallet: agentWallet,
+          adapter: this.createAdapter(agent, agentWallet),
           origin: "internal",
           joinedAt: new Date().toISOString(),
           llm: this.#llmConfig,
