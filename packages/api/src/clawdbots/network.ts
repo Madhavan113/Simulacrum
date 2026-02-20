@@ -1455,7 +1455,10 @@ export class ClawdbotNetwork {
       this.#tickCount += 1;
       const now = new Date();
 
-      // All market creation, betting, and orders are driven purely by LLM cognition
+      if (this.#tickCount % 5 === 0) {
+        await this.topUpDrainedWallets();
+      }
+
       await this.runDiscoveryAndBetting(now);
       await this.resolveExpiredMarkets(now);
       await this.settleResolvedMarkets();
@@ -2573,6 +2576,11 @@ export class ClawdbotNetwork {
           return;
         }
 
+        const reserveHbar = 2;
+        if (runtime.agent.bankrollHbar <= reserveHbar + this.#minBetHbar) {
+          return;
+        }
+
         const hadStakeBefore = (getMarketStore().bets.get(market.id) ?? []).some(
           (bet) => bet.bettorAccountId === runtime.wallet.accountId
         );
@@ -2594,7 +2602,8 @@ export class ClawdbotNetwork {
           return;
         }
 
-        const amountHbar = clamp(decision.amountHbar, this.#minBetHbar, this.#maxBetHbar);
+        const maxAffordable = Math.max(0, runtime.agent.bankrollHbar - reserveHbar);
+        const amountHbar = clamp(decision.amountHbar, this.#minBetHbar, Math.min(this.#maxBetHbar, maxAffordable));
 
         if (amountHbar <= 0) {
           return;
@@ -2638,6 +2647,54 @@ export class ClawdbotNetwork {
       case "WAIT":
       default:
         return;
+    }
+  }
+
+  private async topUpDrainedWallets(): Promise<void> {
+    const minBalance = this.#initialBotBalanceHbar * 0.25;
+
+    for (const runtime of this.#runtimeBots.values()) {
+      if (runtime.origin !== "internal") continue;
+
+      try {
+        const balance = await getBalance(runtime.wallet.accountId, {
+          client: this.getClient(runtime.wallet)
+        });
+
+        if (balance.hbar < minBalance) {
+          const topUp = this.#initialBotBalanceHbar - balance.hbar;
+          await transferHbar(this.#operatorAccountId, runtime.wallet.accountId, topUp, {
+            client: this.getOperatorClient()
+          });
+          runtime.agent.adjustBankroll(topUp);
+          console.log(
+            `[clawdbot] Topped up ${runtime.agent.name} (${runtime.wallet.accountId}) with ${topUp.toFixed(2)} HBAR (was ${balance.hbar.toFixed(2)}).`
+          );
+        } else {
+          runtime.agent.adjustBankroll(balance.hbar - runtime.agent.bankrollHbar);
+        }
+      } catch {
+        // Best-effort; don't block the tick
+      }
+    }
+
+    if (this.#escrowWallet) {
+      try {
+        const escrowBalance = await getBalance(this.#escrowWallet.accountId, {
+          client: this.getClient(this.#escrowWallet)
+        });
+        if (escrowBalance.hbar < 2) {
+          const topUp = 10;
+          await transferHbar(this.#operatorAccountId, this.#escrowWallet.accountId, topUp, {
+            client: this.getOperatorClient()
+          });
+          console.log(
+            `[clawdbot] Topped up escrow ${this.#escrowWallet.accountId} with ${topUp} HBAR (was ${escrowBalance.hbar.toFixed(2)}).`
+          );
+        }
+      } catch {
+        // Best-effort
+      }
     }
   }
 
