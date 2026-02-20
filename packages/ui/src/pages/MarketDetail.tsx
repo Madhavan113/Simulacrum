@@ -313,7 +313,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
               <span className="label" style={{ fontSize: 10 }}>Topic ID</span>
               <HashScanLink id={market.topicId} url={market.topicUrl} />
             </div>
-            {market.outcomeTokenIds && Object.entries(market.outcomeTokenIds).map(([outcome, tokenId]: [string, string]) => (
+            {market.outcomeTokenIds && (Object.entries(market.outcomeTokenIds) as [string, string][]).map(([outcome, tokenId]) => (
               <div key={outcome} className="flex items-center justify-between">
                 <span className="label" style={{ fontSize: 10 }}>{outcome} Token</span>
                 <HashScanLink
@@ -322,7 +322,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
                 />
               </div>
             ))}
-            {market.syntheticOutcomeIds && !market.outcomeTokenIds && Object.entries(market.syntheticOutcomeIds).map(([outcome, syntheticId]: [string, string]) => (
+            {market.syntheticOutcomeIds && !market.outcomeTokenIds && (Object.entries(market.syntheticOutcomeIds) as [string, string][]).map(([outcome, syntheticId]) => (
               <div key={outcome} className="flex items-center justify-between">
                 <span className="label" style={{ fontSize: 10 }}>{outcome} ID</span>
                 <span className="mono" style={{ fontSize: 11 }}>{syntheticId}</span>
