@@ -2651,17 +2651,19 @@ export class ClawdbotNetwork {
   }
 
   private async topUpDrainedWallets(): Promise<void> {
-    const minBalance = this.#initialBotBalanceHbar * 0.25;
+    const internalMinBalance = this.#initialBotBalanceHbar * 0.25;
+    const communityMinBalance = 10;
 
     for (const runtime of this.#runtimeBots.values()) {
-      if (runtime.origin !== "internal") continue;
+      const isCommunity = runtime.origin === "community";
+      const threshold = isCommunity ? communityMinBalance : internalMinBalance;
 
       try {
         const balance = await getBalance(runtime.wallet.accountId, {
           client: this.getClient(runtime.wallet)
         });
 
-        if (balance.hbar < minBalance) {
+        if (balance.hbar < threshold) {
           const topUp = this.#initialBotBalanceHbar - balance.hbar;
           await transferHbar(this.#operatorAccountId, runtime.wallet.accountId, topUp, {
             client: this.getOperatorClient()
@@ -2670,6 +2672,14 @@ export class ClawdbotNetwork {
           console.log(
             `[clawdbot] Topped up ${runtime.agent.name} (${runtime.wallet.accountId}) with ${topUp.toFixed(2)} HBAR (was ${balance.hbar.toFixed(2)}).`
           );
+          this.#eventBus.publish("clawdbot.funded", {
+            botId: runtime.agent.id,
+            botName: runtime.agent.name,
+            accountId: runtime.wallet.accountId,
+            amountHbar: topUp,
+            previousBalanceHbar: balance.hbar,
+            origin: runtime.origin
+          });
         } else {
           runtime.agent.adjustBankroll(balance.hbar - runtime.agent.bankrollHbar);
         }

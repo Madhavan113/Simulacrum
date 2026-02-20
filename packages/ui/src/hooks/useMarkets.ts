@@ -2,7 +2,12 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { marketsApi } from '../api/markets'
 
 export function useMarkets() {
-  return useQuery({ queryKey: ['markets'], queryFn: marketsApi.list })
+  return useQuery({
+    queryKey: ['markets'],
+    queryFn: marketsApi.list,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  })
 }
 
 export function useMarket(id: string) {

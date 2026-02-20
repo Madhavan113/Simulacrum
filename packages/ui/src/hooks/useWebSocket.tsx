@@ -131,6 +131,7 @@ function invalidateFromEvent(queryClient: QueryClient, event: WsEvent) {
     case 'clawdbot.goal.updated':
     case 'clawdbot.goal.completed':
     case 'clawdbot.goal.failed':
+    case 'clawdbot.funded':
       void queryClient.invalidateQueries({ queryKey: ['clawdbots'] })
       break
 
