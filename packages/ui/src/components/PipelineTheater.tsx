@@ -12,6 +12,8 @@ const STAGES: { key: PublicationStatus | 'IDLE'; label: string }[] = [
   { key: 'PUBLISHED',     label: 'PUBLISH' },
 ]
 
+const N = STAGES.length - 1
+
 const FOCUS_HUES: Record<string, number> = {
   agential_game_theory: 30,
   reputation_systems: 45,
@@ -19,6 +21,10 @@ const FOCUS_HUES: Record<string, number> = {
   market_microstructure: 210,
   oracle_reliability: 0,
   agent_native_economics: 270,
+}
+
+function stagePct(idx: number): string {
+  return `${(idx / N) * 100}%`
 }
 
 function agentStageIndex(agent: ResearchAgentProfile): number {
@@ -35,21 +41,11 @@ function AgentLane({ agent }: { agent: ResearchAgentProfile }) {
   const isActive = !isIdle && !isTerminal
   const hasPublished = agent.publicationCount > 0
   const shortName = RESEARCH_FOCUS_SHORT_LABELS[agent.focusArea] ?? agent.focusArea.slice(0, 6)
-  const dotPct = 6.25 + (stageIdx / (STAGES.length - 1)) * 87.5
-  const fillPct = stageIdx > 0 ? (stageIdx / (STAGES.length - 1)) * 87.5 : 0
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, height: 28 }}>
-      {/* Agent label */}
-      <div
-        style={{
-          width: 90,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
+    <div style={{ display: 'flex', alignItems: 'center', height: 28 }}>
+      {/* Label */}
+      <div style={{ width: 100, flexShrink: 0, paddingRight: 8 }}>
         <span
           style={{
             fontSize: 9,
@@ -61,35 +57,26 @@ function AgentLane({ agent }: { agent: ResearchAgentProfile }) {
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
+            display: 'block',
           }}
         >
           {shortName}
         </span>
       </div>
 
-      {/* Track */}
+      {/* Track area — all children use stagePct() for positioning */}
       <div style={{ flex: 1, position: 'relative', height: 28 }}>
-        {/* Rail background */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: 0,
-            right: 0,
-            height: 1,
-            background: 'var(--border)',
-            transform: 'translateY(-50%)',
-          }}
-        />
+        {/* Background rail */}
+        <div style={{ position: 'absolute', top: '50%', left: stagePct(0), right: `${100 - (N / N) * 100}%`, height: 1, background: 'var(--border)', transform: 'translateY(-50%)' }} />
 
-        {/* Fill line */}
-        {fillPct > 0 && (
+        {/* Colored fill from stage 0 to current stage */}
+        {stageIdx > 0 && (
           <div
             style={{
               position: 'absolute',
               top: '50%',
-              left: 0,
-              width: `${fillPct}%`,
+              left: stagePct(0),
+              width: stagePct(stageIdx),
               height: 2,
               background: `linear-gradient(90deg, hsl(${hue}, 30%, 30%), hsl(${hue}, 50%, 50%))`,
               transform: 'translateY(-50%)',
@@ -100,19 +87,17 @@ function AgentLane({ agent }: { agent: ResearchAgentProfile }) {
           />
         )}
 
-        {/* Stage tick marks */}
+        {/* Tick marks at each stage */}
         {STAGES.map((_, i) => (
           <div
             key={i}
             style={{
               position: 'absolute',
-              left: `${6.25 + (i / (STAGES.length - 1)) * 87.5}%`,
+              left: stagePct(i),
               top: '50%',
               width: 1,
               height: 6,
-              background: i <= stageIdx && stageIdx > 0
-                ? `hsl(${hue}, 35%, 40%)`
-                : 'var(--border)',
+              background: i <= stageIdx && stageIdx > 0 ? `hsl(${hue}, 35%, 40%)` : 'var(--border)',
               transform: 'translate(-50%, -50%)',
               transition: 'background 0.4s ease',
             }}
@@ -123,7 +108,7 @@ function AgentLane({ agent }: { agent: ResearchAgentProfile }) {
         <div
           style={{
             position: 'absolute',
-            left: `${dotPct}%`,
+            left: stagePct(stageIdx),
             top: '50%',
             transform: 'translate(-50%, -50%)',
             width: 10,
@@ -131,31 +116,26 @@ function AgentLane({ agent }: { agent: ResearchAgentProfile }) {
             borderRadius: '50%',
             background: isIdle
               ? hasPublished ? `hsl(${hue}, 30%, 35%)` : 'var(--text-dim)'
-              : isTerminal
-                ? 'var(--accent)'
-                : `hsl(${hue}, 55%, 55%)`,
+              : isTerminal ? 'var(--accent)' : `hsl(${hue}, 55%, 55%)`,
             border: `2px solid ${isIdle
               ? hasPublished ? `hsl(${hue}, 20%, 25%)` : 'var(--border)'
-              : `hsl(${hue}, 40%, 35%)`
-            }`,
+              : `hsl(${hue}, 40%, 35%)`}`,
             boxShadow: isActive
               ? `0 0 10px hsl(${hue}, 55%, 55%, 0.5)`
-              : isTerminal
-                ? '0 0 10px rgba(212,145,122,0.4)'
-                : 'none',
+              : isTerminal ? '0 0 10px rgba(212,145,122,0.4)' : 'none',
             animation: isActive ? 'accent-pulse 2s ease-in-out infinite' : 'none',
-            transition: 'left 0.8s cubic-bezier(0.4, 0, 0.2, 1), background 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease',
+            transition: 'left 0.8s cubic-bezier(0.4, 0, 0.2, 1), background 0.4s, box-shadow 0.4s, border-color 0.4s',
             zIndex: 2,
           }}
         />
 
-        {/* Stage label on active dot */}
+        {/* Active stage label above dot */}
         {!isIdle && (
           <span
             style={{
               position: 'absolute',
-              left: `${dotPct}%`,
-              top: -2,
+              left: stagePct(stageIdx),
+              top: 0,
               transform: 'translateX(-50%)',
               fontSize: 7,
               fontWeight: 500,
@@ -168,23 +148,6 @@ function AgentLane({ agent }: { agent: ResearchAgentProfile }) {
             }}
           >
             {STAGES[stageIdx]?.label}
-          </span>
-        )}
-
-        {/* Publication count badge */}
-        {hasPublished && isIdle && (
-          <span
-            style={{
-              position: 'absolute',
-              left: `${dotPct + 2}%`,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              fontSize: 8,
-              fontWeight: 500,
-              color: `hsl(${hue}, 30%, 50%)`,
-            }}
-          >
-            {agent.publicationCount}p
           </span>
         )}
       </div>
@@ -200,25 +163,34 @@ export function PipelineTheater({ agents }: { agents: ResearchAgentProfile[] }) 
         border: '1px solid var(--border)',
         borderRadius: 14,
         padding: '14px 24px 10px',
-        overflow: 'hidden',
       }}
     >
-      {/* Column header labels */}
-      <div style={{ display: 'flex', marginLeft: 90 }}>
-        {STAGES.map((stage) => (
-          <div key={stage.key} style={{ flex: 1, textAlign: 'center' }}>
+      {/* Column headers — same coordinate system as tracks */}
+      <div style={{ display: 'flex', height: 14 }}>
+        <div style={{ width: 100, flexShrink: 0 }} />
+        <div style={{ flex: 1, position: 'relative' }}>
+          {STAGES.map((stage, i) => (
             <span
+              key={stage.key}
               className="label"
-              style={{ fontSize: 7, letterSpacing: '0.12em', color: 'var(--text-dim)' }}
+              style={{
+                position: 'absolute',
+                left: stagePct(i),
+                transform: 'translateX(-50%)',
+                fontSize: 7,
+                letterSpacing: '0.12em',
+                color: 'var(--text-dim)',
+                whiteSpace: 'nowrap',
+              }}
             >
               {stage.label}
             </span>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      {/* Agent lanes */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+      {/* Lanes */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
         {agents.map((agent) => (
           <AgentLane key={agent.id} agent={agent} />
         ))}
