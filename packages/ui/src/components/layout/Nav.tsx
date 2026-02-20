@@ -2,11 +2,12 @@ import { NavLink } from 'react-router-dom'
 import { useWebSocket } from '../../hooks/useWebSocket'
 
 const links = [
-  { to: '/app',         label: 'Dashboard' },
-  { to: '/app/markets', label: 'Markets'   },
-  { to: '/app/agents',  label: 'Agents'    },
-  { to: '/app/bots',    label: 'Community Bots'      },
-  { to: '/app/onboard', label: 'Onboard SDK'         },
+  { to: '/app',              label: 'Dashboard' },
+  { to: '/app/markets',      label: 'Markets'   },
+  { to: '/app/agents',       label: 'Agents'    },
+  { to: '/app/bots',         label: 'Community Bots' },
+  { to: '/app/publications', label: 'Research'       },
+  { to: '/app/onboard',      label: 'Onboard SDK'    },
 ]
 
 export function Nav() {

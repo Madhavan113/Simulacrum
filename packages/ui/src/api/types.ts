@@ -28,4 +28,24 @@ export type {
   TrustEdge,
   TrustGraph,
   WsEvent,
+  // Research types
+  ResearchFocusArea,
+  PublicationStatus,
+  ObservationCategory,
+  ResearchObservation,
+  ObservationWindow,
+  WindowSummary,
+  ResearchAgentProfile,
+  OnChainReference,
+  PublicationFinding,
+  ResearchPublication,
+  EvalTest,
+  EvalDimension,
+  PublicationEvaluation,
+  ResearchEngineStatus,
+} from '@simulacrum/types'
+
+export {
+  RESEARCH_FOCUS_LABELS,
+  RESEARCH_FOCUS_SHORT_LABELS,
 } from '@simulacrum/types'

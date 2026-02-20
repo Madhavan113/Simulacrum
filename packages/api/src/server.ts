@@ -41,6 +41,12 @@ import { createClawdbotsRouter } from "./routes/clawdbots.js";
 import { createInsuranceRouter } from "./routes/insurance.js";
 import { createMarketsRouter } from "./routes/markets.js";
 import { createReputationRouter } from "./routes/reputation.js";
+import { createResearchRouter } from "./routes/research.js";
+import {
+  createResearchEngine,
+  type ResearchEngine,
+  type ResearchEngineOptions
+} from "./research/engine.js";
 
 class InMemoryAgentRegistry implements AgentRegistry {
   readonly #agents = new Map<string, BaseAgent>();
@@ -64,6 +70,7 @@ export interface ApiServer {
   httpServer: HttpServer;
   autonomyEngine: AutonomyEngine | null;
   clawdbotNetwork: ClawdbotNetwork | null;
+  researchEngine: ResearchEngine | null;
   agentAuthService: AgentAuthService | null;
   agentFaucetService: AgentFaucetService | null;
   start: (port?: number) => Promise<number>;
@@ -118,6 +125,22 @@ export interface ApiMarketLifecycleOptions {
 
 export interface ApiAgentPlatformOptions extends AgentPlatformOptions {}
 
+export interface ApiResearchOptions
+  extends Pick<
+    ResearchEngineOptions,
+    | "enabled"
+    | "tickMs"
+    | "agentCount"
+    | "publicationIntervalTicks"
+    | "minObservations"
+    | "evalThreshold"
+    | "xaiApiKey"
+    | "xaiModel"
+    | "xaiBaseUrl"
+    | "xaiMaxRetries"
+    | "xaiTimeoutMs"
+  > {}
+
 export interface ApiCorsOptions {
   allowedOrigins?: string | string[];
 }
@@ -127,6 +150,7 @@ export interface CreateApiServerOptions {
   seedAgents?: boolean;
   autonomy?: ApiAutonomyOptions;
   clawdbots?: ApiClawdbotOptions;
+  research?: ApiResearchOptions;
   marketLifecycle?: ApiMarketLifecycleOptions;
   agentPlatform?: ApiAgentPlatformOptions;
   cors?: ApiCorsOptions;
@@ -218,6 +242,28 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
     eventBus,
     registry,
     ...options.clawdbots
+  });
+  const envResearchTickMs = Number(process.env.RESEARCH_TICK_MS);
+  const envResearchAgentCount = Number(process.env.RESEARCH_AGENT_COUNT);
+  const envResearchPubInterval = Number(process.env.RESEARCH_PUBLICATION_INTERVAL_TICKS);
+  const envResearchMinObs = Number(process.env.RESEARCH_MIN_OBSERVATIONS);
+  const envResearchEvalThreshold = Number(process.env.RESEARCH_EVAL_THRESHOLD);
+  const envResearchMaxRetries = Number(process.env.RESEARCH_XAI_MAX_RETRIES);
+  const envResearchTimeoutMs = Number(process.env.RESEARCH_XAI_TIMEOUT_MS);
+
+  const researchEngine = createResearchEngine({
+    eventBus,
+    enabled: options.research?.enabled ?? (process.env.RESEARCH_ENABLED ?? "false").toLowerCase() === "true",
+    tickMs: options.research?.tickMs ?? (Number.isFinite(envResearchTickMs) ? envResearchTickMs : 60_000),
+    agentCount: options.research?.agentCount ?? (Number.isFinite(envResearchAgentCount) ? envResearchAgentCount : 3),
+    publicationIntervalTicks: options.research?.publicationIntervalTicks ?? (Number.isFinite(envResearchPubInterval) ? envResearchPubInterval : 10),
+    minObservations: options.research?.minObservations ?? (Number.isFinite(envResearchMinObs) ? envResearchMinObs : 30),
+    evalThreshold: options.research?.evalThreshold ?? (Number.isFinite(envResearchEvalThreshold) ? envResearchEvalThreshold : 60),
+    xaiApiKey: options.research?.xaiApiKey ?? process.env.RESEARCH_XAI_API_KEY ?? "",
+    xaiModel: options.research?.xaiModel ?? process.env.RESEARCH_XAI_MODEL ?? "grok-4-1-fast-reasoning",
+    xaiBaseUrl: options.research?.xaiBaseUrl ?? process.env.RESEARCH_XAI_BASE_URL ?? "https://api.x.ai/v1",
+    xaiMaxRetries: options.research?.xaiMaxRetries ?? (Number.isFinite(envResearchMaxRetries) ? envResearchMaxRetries : 3),
+    xaiTimeoutMs: options.research?.xaiTimeoutMs ?? (Number.isFinite(envResearchTimeoutMs) ? envResearchTimeoutMs : 120_000),
   });
   const lifecycleOptions = options.marketLifecycle ?? {};
   const lifecycleEnabled =
@@ -337,6 +383,9 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
     );
   }
 
+  // Research routes are always available (read-only observations)
+  app.use("/research", createResearchRouter(researchEngine));
+
   if (legacyRoutesEnabled) {
     app.use("/markets", createMarketsRouter(eventBus));
     app.use("/agents", createAgentsRouter(registry, eventBus));
@@ -387,6 +436,7 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
     httpServer,
     autonomyEngine,
     clawdbotNetwork,
+    researchEngine,
     agentAuthService,
     agentFaucetService,
     async start(port = 3001): Promise<number> {
@@ -405,6 +455,13 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
           await clawdbotNetwork.start();
         } catch (error) {
           console.error("[server] ClawDBot network failed to start (server continues):", error instanceof Error ? error.message : error);
+        }
+      }
+      if (researchEngine) {
+        try {
+          await researchEngine.start();
+        } catch (error) {
+          console.error("[server] Research engine failed to start (server continues):", error instanceof Error ? error.message : error);
         }
       }
 
@@ -440,6 +497,9 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
         marketLifecycleInterval = null;
       }
 
+      if (researchEngine) {
+        await researchEngine.stop();
+      }
       if (clawdbotNetwork) {
         await clawdbotNetwork.stop();
       }

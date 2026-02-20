@@ -147,6 +147,24 @@ function invalidateFromEvent(queryClient: QueryClient, event: WsEvent) {
       void queryClient.invalidateQueries({ queryKey: ['reputation'] })
       break
 
+    // Research engine
+    case 'research.started':
+    case 'research.stopped':
+    case 'research.tick':
+      void queryClient.invalidateQueries({ queryKey: ['research', 'status'] })
+      break
+    case 'research.publication.published':
+    case 'research.publication.retracted':
+      void queryClient.invalidateQueries({ queryKey: ['research'] })
+      break
+    case 'research.pipeline.advanced':
+    case 'research.evaluation.complete':
+      void queryClient.invalidateQueries({ queryKey: ['research'] })
+      break
+    case 'research.observation.batch':
+      void queryClient.invalidateQueries({ queryKey: ['research', 'observations'] })
+      break
+
     default:
       // Wildcard: any autonomy.market.* or clawdbot.market.* → invalidate markets
       if (type.startsWith('autonomy.market') || type.startsWith('clawdbot.market')) {

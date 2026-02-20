@@ -51,6 +51,9 @@ importers:
       '@simulacrum/reputation':
         specifier: workspace:*
         version: link:../reputation
+      '@simulacrum/research':
+        specifier: workspace:*
+        version: link:../research
       express:
         specifier: ^4.21.2
         version: 4.22.1
@@ -134,6 +137,19 @@ importers:
       '@simulacrum/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.11
+
+  packages/research:
+    dependencies:
+      '@simulacrum/core':
+        specifier: workspace:*
+        version: link:../core
+      '@simulacrum/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

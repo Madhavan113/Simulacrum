@@ -285,6 +285,194 @@ export interface InsurancePool {
   updatedAt: string;
 }
 
+// ── Research types ──
+
+export type ResearchFocusArea =
+  | "agential_game_theory"
+  | "reputation_systems"
+  | "agent_coordination"
+  | "market_microstructure"
+  | "oracle_reliability"
+  | "agent_native_economics";
+
+export const RESEARCH_FOCUS_LABELS: Record<ResearchFocusArea, string> = {
+  agential_game_theory: "Agential Game Theory",
+  reputation_systems: "Reputation Systems",
+  agent_coordination: "Agent Coordination",
+  market_microstructure: "Market Microstructure",
+  oracle_reliability: "Oracle Reliability",
+  agent_native_economics: "Agent-Native Economics",
+};
+
+export const RESEARCH_FOCUS_SHORT_LABELS: Record<ResearchFocusArea, string> = {
+  agential_game_theory: "Game Theory",
+  reputation_systems: "Reputation",
+  agent_coordination: "Coordination",
+  market_microstructure: "Microstructure",
+  oracle_reliability: "Oracles",
+  agent_native_economics: "Economics",
+};
+
+export type PublicationStatus =
+  | "COLLECTING"
+  | "ANALYZING"
+  | "HYPOTHESIZING"
+  | "DRAFTING"
+  | "REVIEWING"
+  | "EVALUATING"
+  | "PUBLISHED"
+  | "RETRACTED";
+
+export type ObservationCategory =
+  | "market_creation"
+  | "price_movement"
+  | "agent_strategy"
+  | "dispute_resolution"
+  | "reputation_change"
+  | "coordination_signal"
+  | "liquidity_event"
+  | "anomaly";
+
+export interface ResearchObservation {
+  id: string;
+  timestamp: string;
+  category: ObservationCategory;
+  sourceEvent: string;
+  marketId?: string;
+  agentIds: string[];
+  metrics: Record<string, number>;
+  context: Record<string, unknown>;
+}
+
+export interface WindowSummary {
+  observationCount: number;
+  marketCount: number;
+  betCount: number;
+  totalVolumeHbar: number;
+  activeAgentCount: number;
+  disputeCount: number;
+  avgOddsShift: number;
+  priceEfficiency: number;
+  uniqueStrategiesObserved: number;
+}
+
+export interface ObservationWindow {
+  id: string;
+  startTime: string;
+  endTime: string;
+  observations: ResearchObservation[];
+  summary: WindowSummary;
+}
+
+export interface ResearchAgentProfile {
+  id: string;
+  name: string;
+  focusArea: ResearchFocusArea;
+  model: string;
+  observationCount: number;
+  publicationCount: number;
+  averageEvalScore: number;
+  currentStage?: PublicationStatus;
+  createdAt: string;
+}
+
+export interface OnChainReference {
+  type: "transaction" | "topic" | "account" | "market";
+  entityId: string;
+  hashScanUrl: string;
+  description: string;
+}
+
+export interface PublicationFinding {
+  claim: string;
+  evidence: string;
+  supportingData: Record<string, unknown>;
+  onChainRefs: OnChainReference[];
+  confidence: number;
+}
+
+export interface ResearchPublication {
+  id: string;
+  agentId: string;
+  focusArea: ResearchFocusArea;
+  status: PublicationStatus;
+
+  title: string;
+  abstract: string;
+  methodology: string;
+  findings: PublicationFinding[];
+  conclusion: string;
+  limitations: string;
+  futureWork: string;
+
+  dataWindow: {
+    startTime: string;
+    endTime: string;
+    observationCount: number;
+    marketIds: string[];
+  };
+
+  evaluation?: PublicationEvaluation;
+  previousPublicationIds: string[];
+
+  createdAt: string;
+  publishedAt?: string;
+  retractedAt?: string;
+  retractedReason?: string;
+}
+
+export interface EvalTest {
+  name: string;
+  description: string;
+  passed: boolean;
+  score: number;
+  details: string;
+}
+
+export interface EvalDimension {
+  score: number;
+  rationale: string;
+  tests: EvalTest[];
+}
+
+export interface PublicationEvaluation {
+  id: string;
+  publicationId: string;
+
+  dimensions: {
+    reproducibility: EvalDimension;
+    statisticalSignificance: EvalDimension;
+    novelty: EvalDimension;
+    coherence: EvalDimension;
+    evidenceBacking: EvalDimension;
+    predictiveValidity: EvalDimension;
+  };
+
+  overallScore: number;
+  verdict: "PASS" | "FAIL" | "MARGINAL";
+  critiques: string[];
+  strengths: string[];
+
+  evaluatedAt: string;
+  evaluatorModel: string;
+}
+
+export interface ResearchEngineStatus {
+  enabled: boolean;
+  running: boolean;
+  tickMs: number;
+  tickCount: number;
+  agentCount: number;
+  totalObservations: number;
+  totalPublications: number;
+  publishedCount: number;
+  retractedCount: number;
+  averageEvalScore: number;
+  activeAgents: ResearchAgentProfile[];
+  lastTickAt?: string;
+  lastError?: string;
+}
+
 // ── WebSocket types ──
 
 export interface WsEvent<T = unknown> {
