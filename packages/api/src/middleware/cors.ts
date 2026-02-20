@@ -21,7 +21,7 @@ export function createCorsMiddleware(options: CorsMiddlewareOptions = {}) {
     }
 
     response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, x-admin-key");
     response.setHeader("Access-Control-Max-Age", "86400");
 
     if (request.method === "OPTIONS") {
