@@ -64,6 +64,8 @@ export interface ClawdbotNetworkOptions {
   tickMs?: number;
   botCount?: number;
   initialBotBalanceHbar?: number;
+  communityFundingHbar?: number;
+  communityRefillThresholdHbar?: number;
   marketEveryTicks?: number;
   minOpenMarkets?: number;
   marketCloseMinutes?: number;
@@ -417,6 +419,8 @@ export class ClawdbotNetwork {
   readonly #tickMs: number;
   readonly #targetBots: number;
   readonly #initialBotBalanceHbar: number;
+  readonly #communityFundingHbar: number;
+  readonly #communityRefillThresholdHbar: number;
   readonly #marketCloseMinutes: number;
   readonly #minBetHbar: number;
   readonly #maxBetHbar: number;
@@ -467,6 +471,10 @@ export class ClawdbotNetwork {
     this.#tickMs = options.tickMs ?? DEFAULT_TICK_MS;
     this.#targetBots = options.botCount ?? 3;
     this.#initialBotBalanceHbar = options.initialBotBalanceHbar ?? 25;
+    this.#communityFundingHbar = options.communityFundingHbar
+      ?? Number(process.env.CLAWDBOT_COMMUNITY_FUNDING_HBAR || 100);
+    this.#communityRefillThresholdHbar = options.communityRefillThresholdHbar
+      ?? Number(process.env.CLAWDBOT_COMMUNITY_REFILL_THRESHOLD_HBAR || 25);
     this.#marketCloseMinutes = options.marketCloseMinutes ?? 20;
     this.#minBetHbar = options.minBetHbar ?? 1;
     this.#maxBetHbar = options.maxBetHbar ?? 4;
@@ -770,7 +778,7 @@ export class ClawdbotNetwork {
         id: randomUUID(),
         name,
         accountId,
-        bankrollHbar: Math.max(1, Math.round(input.bankrollHbar ?? this.#initialBotBalanceHbar)),
+        bankrollHbar: Math.max(1, Math.round(input.bankrollHbar ?? this.#communityFundingHbar)),
         reputationScore: clamp(input.reputationScore ?? 50, 0, 100),
         mode: input.mode ?? "BALANCED"
       },
@@ -2688,7 +2696,7 @@ export class ClawdbotNetwork {
 
   private async topUpDrainedWallets(): Promise<void> {
     const internalMinBalance = this.#initialBotBalanceHbar * 0.25;
-    const communityMinBalance = 10;
+    const communityMinBalance = this.#communityRefillThresholdHbar;
 
     let operatorHbar = Infinity;
     try {
@@ -2710,7 +2718,8 @@ export class ClawdbotNetwork {
         });
 
         if (balance.hbar < threshold) {
-          const topUp = this.#initialBotBalanceHbar - balance.hbar;
+          const target = isCommunity ? this.#communityFundingHbar : this.#initialBotBalanceHbar;
+          const topUp = target - balance.hbar;
 
           if (operatorHbar < topUp + 5) {
             console.warn(
