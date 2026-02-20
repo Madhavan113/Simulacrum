@@ -183,7 +183,10 @@ export async function createTopic(
   const client = resolveClient(options.client);
 
   try {
-    const transaction = new TopicCreateTransaction().setTopicMemo(memo);
+    const safeMemo = Buffer.byteLength(memo, "utf-8") > 100
+      ? memo.slice(0, 97) + "..."
+      : memo;
+    const transaction = new TopicCreateTransaction().setTopicMemo(safeMemo);
 
     if (submitKey) {
       transaction.setSubmitKey(parseSubmitKey(submitKey));
