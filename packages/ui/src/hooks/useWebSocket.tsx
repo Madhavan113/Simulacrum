@@ -1,8 +1,10 @@
 import { type QueryClient } from '@tanstack/react-query'
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -110,12 +112,18 @@ function invalidateFromEvent(queryClient: QueryClient, event: WsEvent) {
     // Agent events
     case 'agent.created':
     case 'autonomy.agent.created':
-    case 'clawdbot.spawned':
-    case 'clawdbot.joined':
       void queryClient.invalidateQueries({ queryKey: ['agents'] })
       break
 
-    // ClawDBot network lifecycle
+    // Bot spawned/joined — update both agents list and clawdbots queries
+    case 'clawdbot.spawned':
+    case 'clawdbot.joined':
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: ['clawdbots'] })
+      break
+
+    // ClawDBot network lifecycle + thread messages
+    case 'clawdbot.message':
     case 'clawdbot.started':
     case 'clawdbot.stopped':
     case 'clawdbot.tick':
@@ -154,10 +162,10 @@ export function WebSocketProvider({ queryClient, children }: WebSocketProviderPr
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectDelayMsRef = useRef(1_500)
 
-  function subscribe(listener: (event: WsEvent) => void) {
+  const subscribe = useCallback((listener: (event: WsEvent) => void) => {
     listenersRef.current.add(listener)
     return () => { listenersRef.current.delete(listener) }
-  }
+  }, [])
 
   useEffect(() => {
     let reconnectTimer: ReturnType<typeof setTimeout>
@@ -227,8 +235,10 @@ export function WebSocketProvider({ queryClient, children }: WebSocketProviderPr
     }
   }, [queryClient])
 
+  const contextValue = useMemo<WsContextValue>(() => ({ status, subscribe }), [status, subscribe])
+
   return (
-    <WsContext.Provider value={{ status, subscribe }}>
+    <WsContext.Provider value={contextValue}>
       {children}
     </WsContext.Provider>
   )

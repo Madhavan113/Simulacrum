@@ -16,7 +16,10 @@ import {
   clamp,
   createAccount,
   createHederaClient,
-  type HederaNetwork
+  getBalance,
+  transferHbar,
+  type HederaNetwork,
+  type PersistentStore
 } from "@simulacrum/core";
 import {
   challengeMarketResolution,
@@ -39,10 +42,16 @@ import {
   type BotCredentialBundle
 } from "./credential-store.js";
 import {
+  createWalletPersistence,
+  type PersistedWallet,
+  type WalletPersistenceStore
+} from "../wallet-persistence.js";
+import {
   LlmCognitionEngine,
   type ClawdbotGoal,
   type ClawdbotPlannedAction,
-  type LlmProviderConfig
+  type LlmProviderConfig,
+  type MarketSentimentMap
 } from "./llm-cognition.js";
 
 type HederaClient = ReturnType<typeof createHederaClient>;
@@ -434,6 +443,8 @@ export class ClawdbotNetwork {
   readonly #hostedControl = new Map<string, HostedBotControl>();
   #eventSubscription: (() => void) | null = null;
   readonly #activeDisputeBroadcasts = new Set<string>();
+  readonly #walletStore: PersistentStore<WalletPersistenceStore>;
+  #escrowWallet: PersistedWallet | null = null;
 
   #interval: ReturnType<typeof setInterval> | null = null;
   #running = false;
@@ -514,6 +525,7 @@ export class ClawdbotNetwork {
     this.#keyStore = new EncryptedInMemoryKeyStore(
       process.env.HEDERA_KEYSTORE_SECRET ?? "simulacrum-clawdbot-network"
     );
+    this.#walletStore = createWalletPersistence("clawdbot-wallets.json");
 
     if (this.#enabled && (!this.#operatorAccountId || !this.#operatorPrivateKey)) {
       throw new Error(
@@ -1384,6 +1396,7 @@ export class ClawdbotNetwork {
       return;
     }
 
+    await this.ensureSharedEscrow();
     await this.ensureBotPopulation();
     await this.runTick();
 
@@ -1414,6 +1427,9 @@ export class ClawdbotNetwork {
     }
 
     this.#running = false;
+
+    await this.reclaimHbar();
+
     this.#eventBus.publish("clawdbot.stopped", this.getStatus());
 
     for (const client of this.#clientCache.values()) {
@@ -1801,6 +1817,52 @@ export class ClawdbotNetwork {
       return;
     }
 
+    const persisted = this.#walletStore.get();
+
+    if (this.#runtimeBots.size === 0 && persisted.wallets.length > 0) {
+      for (let index = 0; index < persisted.wallets.length && this.#runtimeBots.size < this.#targetBots; index += 1) {
+        const wallet = persisted.wallets[index]!;
+        const sequence = index + 1;
+        const strategy = this.strategyForIndex(sequence);
+        const agent = new BaseAgent(
+          {
+            id: randomUUID(),
+            name: `ClawDBot-${sequence}`,
+            accountId: wallet.accountId,
+            bankrollHbar: this.#initialBotBalanceHbar,
+            reputationScore: 50
+          },
+          strategy
+        );
+
+        const runtime: RuntimeBot = {
+          agent,
+          wallet: {
+            accountId: wallet.accountId,
+            privateKey: wallet.privateKey,
+            privateKeyType: wallet.privateKeyType
+          },
+          adapter: this.createAdapter(agent, {
+            accountId: wallet.accountId,
+            privateKey: wallet.privateKey,
+            privateKeyType: wallet.privateKeyType
+          }),
+          origin: "internal",
+          joinedAt: new Date().toISOString(),
+          llm: this.#llmConfig,
+          hosted: false
+        };
+
+        this.#runtimeBots.set(agent.id, runtime);
+        this.#registry.add(agent);
+        this.#eventBus.publish("clawdbot.restored", {
+          botId: agent.id,
+          accountId: agent.accountId,
+          strategy: strategy.name
+        });
+      }
+    }
+
     while (this.#runtimeBots.size < this.#targetBots) {
       const sequence = this.#runtimeBots.size + 1;
       const created = await createAccount(this.#initialBotBalanceHbar, {
@@ -1837,6 +1899,9 @@ export class ClawdbotNetwork {
 
       this.#runtimeBots.set(agent.id, runtime);
       this.#registry.add(agent);
+
+      persisted.wallets.push(wallet);
+      this.#walletStore.persist(persisted);
       this.#eventBus.publish("clawdbot.spawned", {
         botId: agent.id,
         accountId: agent.accountId,
@@ -1995,12 +2060,13 @@ export class ClawdbotNetwork {
             : undefined;
         const closeTime = new Date(Date.now() + closeMinutes * 60 * 1000).toISOString();
 
+        const escrowAccountId = this.#escrowWallet?.accountId ?? wallet.accountId;
         const created = await createMarket(
           {
             question,
             description: `Created by ${agent.name}`,
             creatorAccountId: wallet.accountId,
-            escrowAccountId: wallet.accountId,
+            escrowAccountId,
             closeTime,
             outcomes,
             initialOddsByOutcome,
@@ -2241,11 +2307,13 @@ export class ClawdbotNetwork {
         args: {}
       });
       const markets = (Array.isArray(fetched) ? fetched : []) as MarketSnapshot[];
-      const goal = await this.ensureGoal(runtime, markets);
+      const goal = await this.ensureGoal(runtime, markets, reputationByAccount, marketSentiment);
       const action = await this.cognitionFor(runtime).decideAction({
         goal,
         bot: runtime.agent,
-        markets
+        markets,
+        reputationByAccount,
+        marketSentiment
       });
 
       this.#eventBus.publish("clawdbot.goal.updated", {
@@ -2313,7 +2381,12 @@ export class ClawdbotNetwork {
     });
   }
 
-  private async ensureGoal(runtime: RuntimeBot, markets: MarketSnapshot[]): Promise<ClawdbotGoal> {
+  private async ensureGoal(
+    runtime: RuntimeBot,
+    markets: MarketSnapshot[],
+    reputationByAccount?: Record<string, number>,
+    marketSentiment?: MarketSentimentMap
+  ): Promise<ClawdbotGoal> {
     const existing = this.#goalsByBotId.get(runtime.agent.id);
 
     if (existing && (existing.status === "PENDING" || existing.status === "IN_PROGRESS")) {
@@ -2322,7 +2395,9 @@ export class ClawdbotNetwork {
 
     const created = await this.cognitionFor(runtime).generateGoal({
       bot: runtime.agent,
-      markets
+      markets,
+      reputationByAccount,
+      marketSentiment
     });
     const inProgress: ClawdbotGoal = {
       ...created,
@@ -2895,6 +2970,13 @@ export class ClawdbotNetwork {
             { client: escrowClient }
           );
 
+          for (const runtime of this.#runtimeBots.values()) {
+            if (runtime.wallet.accountId === winnerAccountId) {
+              runtime.agent.adjustBankroll(claim.payoutHbar);
+              break;
+            }
+          }
+
           this.#eventBus.publish("clawdbot.market.claimed", claim);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -2926,6 +3008,10 @@ export class ClawdbotNetwork {
       return this.getOperatorClient();
     }
 
+    if (this.#escrowWallet && accountId === this.#escrowWallet.accountId) {
+      return this.getClient(this.#escrowWallet);
+    }
+
     for (const runtime of this.#runtimeBots.values()) {
       if (runtime.wallet.accountId === accountId) {
         return this.getClient(runtime.wallet);
@@ -2933,6 +3019,79 @@ export class ClawdbotNetwork {
     }
 
     return null;
+  }
+
+  private async ensureSharedEscrow(): Promise<void> {
+    if (!this.#enabled || this.#escrowWallet) {
+      return;
+    }
+
+    const persisted = this.#walletStore.get();
+
+    if (persisted.escrow?.accountId && persisted.escrow?.privateKey) {
+      this.#escrowWallet = persisted.escrow;
+      return;
+    }
+
+    const created = await createAccount(1, {
+      client: this.getOperatorClient(),
+      keyStore: this.#keyStore
+    });
+
+    this.#escrowWallet = {
+      accountId: created.accountId,
+      privateKey: created.privateKey,
+      privateKeyType: "der"
+    };
+
+    persisted.escrow = this.#escrowWallet;
+    this.#walletStore.persist(persisted);
+
+    this.#eventBus.publish("clawdbot.escrow.created", {
+      accountId: this.#escrowWallet.accountId
+    });
+  }
+
+  private async reclaimHbar(): Promise<void> {
+    const RESERVE_HBAR = 0.5;
+
+    const walletsToReclaim: AgentWallet[] = [];
+
+    for (const runtime of this.#runtimeBots.values()) {
+      if (runtime.origin === "internal") {
+        walletsToReclaim.push(runtime.wallet);
+      }
+    }
+
+    if (this.#escrowWallet) {
+      walletsToReclaim.push(this.#escrowWallet);
+    }
+
+    for (const wallet of walletsToReclaim) {
+      try {
+        const balance = await getBalance(wallet.accountId, {
+          client: this.getClient(wallet)
+        });
+        const reclaimable = balance.hbar - RESERVE_HBAR;
+
+        if (reclaimable <= 0.01) {
+          continue;
+        }
+
+        const amount = Number(reclaimable.toFixed(8));
+        await transferHbar(wallet.accountId, this.#operatorAccountId, amount, {
+          client: this.getClient(wallet)
+        });
+
+        this.#eventBus.publish("clawdbot.hbar.reclaimed", {
+          fromAccountId: wallet.accountId,
+          toAccountId: this.#operatorAccountId,
+          amountHbar: amount
+        });
+      } catch {
+        // Best-effort; don't block shutdown
+      }
+    }
   }
 
   private getClient(wallet: AgentWallet): HederaClient {

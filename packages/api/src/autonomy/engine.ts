@@ -13,7 +13,10 @@ import {
   clamp,
   createAccount,
   createHederaClient,
-  type HederaNetwork
+  getBalance,
+  transferHbar,
+  type HederaNetwork,
+  type PersistentStore
 } from "@simulacrum/core";
 import {
   claimWinnings,
@@ -31,6 +34,11 @@ import {
 
 import type { ApiEventBus } from "../events.js";
 import type { AgentRegistry } from "../routes/agents.js";
+import {
+  createWalletPersistence,
+  type PersistedWallet,
+  type WalletPersistenceStore
+} from "../wallet-persistence.js";
 
 type HederaClient = ReturnType<typeof createHederaClient>;
 
@@ -137,6 +145,8 @@ export class AutonomyEngine {
   readonly #keyStore: EncryptedInMemoryKeyStore;
   readonly #runtimeAgents = new Map<string, RuntimeAgent>();
   readonly #clientCache = new Map<string, HederaClient>();
+  readonly #walletStore: PersistentStore<WalletPersistenceStore>;
+  #escrowWallet: PersistedWallet | null = null;
 
   #interval: ReturnType<typeof setInterval> | null = null;
   #running = false;
@@ -165,6 +175,7 @@ export class AutonomyEngine {
 
     const secret = process.env.HEDERA_KEYSTORE_SECRET ?? "simulacrum-autonomy";
     this.#keyStore = new EncryptedInMemoryKeyStore(secret);
+    this.#walletStore = createWalletPersistence("autonomy-wallets.json");
 
     if (this.#enabled && (!this.#operatorAccountId || !this.#operatorPrivateKey)) {
       throw new Error(
@@ -195,6 +206,7 @@ export class AutonomyEngine {
       return;
     }
 
+    await this.ensureSharedEscrow();
     await this.ensureAgentPopulation();
     await this.runTick();
 
@@ -216,6 +228,9 @@ export class AutonomyEngine {
     }
 
     this.#running = false;
+
+    await this.reclaimHbar();
+
     this.#eventBus.publish("autonomy.stopped", this.getStatus());
 
     for (const client of this.#clientCache.values()) {
@@ -299,6 +314,7 @@ export class AutonomyEngine {
     const closeMinutes = Math.max(5, Math.round(input.closeMinutes ?? this.#marketCloseMinutes));
     const closeTime = new Date(Date.now() + closeMinutes * 60 * 1000).toISOString();
 
+    const escrowAccountId = this.#escrowWallet?.accountId ?? challenger.wallet.accountId;
     const client = this.getClient(challenger.wallet);
     const created = await createMarket(
       {
@@ -307,7 +323,7 @@ export class AutonomyEngine {
           ? `Agent challenge: ${challenger.agent.name} vs ${target.agent.name}`
           : `Agent challenge issued by ${challenger.agent.name}`,
         creatorAccountId: challenger.wallet.accountId,
-        escrowAccountId: challenger.wallet.accountId,
+        escrowAccountId,
         closeTime,
         outcomes: input.outcomes && input.outcomes.length > 1 ? input.outcomes : ["YES", "NO"]
       },
@@ -358,6 +374,44 @@ export class AutonomyEngine {
       return;
     }
 
+    const persisted = this.#walletStore.get();
+
+    if (this.#runtimeAgents.size === 0 && persisted.wallets.length > 0) {
+      for (let index = 0; index < persisted.wallets.length && this.#runtimeAgents.size < this.#targetAgents; index += 1) {
+        const wallet = persisted.wallets[index]!;
+        const sequence = index + 1;
+        const strategy = this.strategyForIndex(sequence);
+        const agent = new BaseAgent(
+          {
+            id: randomUUID(),
+            name: `AutoAgent-${sequence}`,
+            accountId: wallet.accountId,
+            bankrollHbar: this.#initialAgentBalanceHbar,
+            reputationScore: 50
+          },
+          strategy
+        );
+
+        const runtime: RuntimeAgent = {
+          agent,
+          wallet: {
+            accountId: wallet.accountId,
+            privateKey: wallet.privateKey,
+            privateKeyType: wallet.privateKeyType
+          }
+        };
+
+        this.#runtimeAgents.set(agent.id, runtime);
+        this.#registry.add(agent);
+
+        this.#eventBus.publish("autonomy.agent.restored", {
+          agentId: agent.id,
+          accountId: agent.accountId,
+          strategy: strategy.name
+        });
+      }
+    }
+
     while (this.#runtimeAgents.size < this.#targetAgents) {
       const sequence = this.#runtimeAgents.size + 1;
       const created = await createAccount(this.#initialAgentBalanceHbar, {
@@ -377,17 +431,22 @@ export class AutonomyEngine {
         strategy
       );
 
+      const wallet: AgentWallet = {
+        accountId: created.accountId,
+        privateKey: created.privateKey,
+        privateKeyType: "der"
+      };
+
       const runtime: RuntimeAgent = {
         agent,
-        wallet: {
-          accountId: created.accountId,
-          privateKey: created.privateKey,
-          privateKeyType: "der"
-        }
+        wallet
       };
 
       this.#runtimeAgents.set(agent.id, runtime);
       this.#registry.add(agent);
+
+      persisted.wallets.push(wallet);
+      this.#walletStore.persist(persisted);
 
       this.#eventBus.publish("autonomy.agent.created", {
         agentId: agent.id,
@@ -474,6 +533,11 @@ export class AutonomyEngine {
       const bets = store.bets.get(market.id) ?? [];
 
       for (const runtime of this.#runtimeAgents.values()) {
+        if (runtime.wallet.accountId === market.creatorAccountId ||
+            runtime.wallet.accountId === market.escrowAccountId) {
+          continue;
+        }
+
         if (bets.some((bet) => bet.bettorAccountId === runtime.wallet.accountId)) {
           continue;
         }
@@ -739,6 +803,10 @@ export class AutonomyEngine {
       return this.getOperatorClient();
     }
 
+    if (this.#escrowWallet && accountId === this.#escrowWallet.accountId) {
+      return this.getClient(this.#escrowWallet);
+    }
+
     for (const runtime of this.#runtimeAgents.values()) {
       if (runtime.wallet.accountId === accountId) {
         return this.getClient(runtime.wallet);
@@ -746,6 +814,77 @@ export class AutonomyEngine {
     }
 
     return null;
+  }
+
+  private async ensureSharedEscrow(): Promise<void> {
+    if (!this.#enabled || this.#escrowWallet) {
+      return;
+    }
+
+    const persisted = this.#walletStore.get();
+
+    if (persisted.escrow?.accountId && persisted.escrow?.privateKey) {
+      this.#escrowWallet = persisted.escrow;
+      return;
+    }
+
+    const created = await createAccount(1, {
+      client: this.getOperatorClient(),
+      keyStore: this.#keyStore
+    });
+
+    this.#escrowWallet = {
+      accountId: created.accountId,
+      privateKey: created.privateKey,
+      privateKeyType: "der"
+    };
+
+    persisted.escrow = this.#escrowWallet;
+    this.#walletStore.persist(persisted);
+
+    this.#eventBus.publish("autonomy.escrow.created", {
+      accountId: this.#escrowWallet.accountId
+    });
+  }
+
+  private async reclaimHbar(): Promise<void> {
+    const RESERVE_HBAR = 0.5;
+
+    const walletsToReclaim: AgentWallet[] = [];
+
+    for (const runtime of this.#runtimeAgents.values()) {
+      walletsToReclaim.push(runtime.wallet);
+    }
+
+    if (this.#escrowWallet) {
+      walletsToReclaim.push(this.#escrowWallet);
+    }
+
+    for (const wallet of walletsToReclaim) {
+      try {
+        const balance = await getBalance(wallet.accountId, {
+          client: this.getClient(wallet)
+        });
+        const reclaimable = balance.hbar - RESERVE_HBAR;
+
+        if (reclaimable <= 0.01) {
+          continue;
+        }
+
+        const amount = Number(reclaimable.toFixed(8));
+        await transferHbar(wallet.accountId, this.#operatorAccountId, amount, {
+          client: this.getClient(wallet)
+        });
+
+        this.#eventBus.publish("autonomy.hbar.reclaimed", {
+          fromAccountId: wallet.accountId,
+          toAccountId: this.#operatorAccountId,
+          amountHbar: amount
+        });
+      } catch {
+        // Best-effort; don't block shutdown
+      }
+    }
   }
 
   private getClient(wallet: AgentWallet): HederaClient {

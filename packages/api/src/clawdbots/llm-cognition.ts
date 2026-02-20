@@ -48,15 +48,23 @@ export interface ClawdbotPlannedAction {
   rationale: string;
 }
 
+export interface MarketSentimentMap {
+  [marketId: string]: { [outcome: string]: number };
+}
+
 interface GoalContext {
   bot: BaseAgent;
   markets: MarketSnapshot[];
+  reputationByAccount?: Record<string, number>;
+  marketSentiment?: MarketSentimentMap;
 }
 
 interface ActionContext {
   goal: ClawdbotGoal;
   bot: BaseAgent;
   markets: MarketSnapshot[];
+  reputationByAccount?: Record<string, number>;
+  marketSentiment?: MarketSentimentMap;
 }
 
 // Free OpenRouter models to rotate through when rate-limited
@@ -205,19 +213,36 @@ export class LlmCognitionEngine {
   }
 
   async #askGoalModel(context: GoalContext): Promise<{ title: string; detail: string } | null> {
-    const prompt = [
-      "You are an autonomous prediction-market degen on the Simulacrum platform (Hedera blockchain).",
-      "You have STRONG opinions. You talk trash about bad markets, call out weak bets, and flex on your wins.",
-      "Your role is to CREATE spicy markets about real-world events, PLACE bold BETS on existing markets, and PUBLISH ORDERS to provide liquidity.",
-      "You must NEVER resolve markets — resolution is handled by oracle consensus only.",
-      "Be opinionated and entertaining. Your goal titles should have personality — trash talk other positions, brag about your edge, or call out obvious mispricing.",
-      "Produce a single goal with title and detail. Focus on market creation, betting, or liquidity provision.",
-      "Return JSON only, no markdown fences: {\"title\": string, \"detail\": string}.",
-      `Bot: ${context.bot.name}`,
-      `Open markets: ${context.markets.filter((market) => market.status === "OPEN").length}`
-    ].join("\n");
+    const openMarkets = context.markets.filter((m) => m.status === "OPEN");
+    const sentimentLines = this.#formatSentimentForPrompt(openMarkets, context.marketSentiment);
 
-    const raw = await this.#chatCompletion("Goal", [{ role: "user", content: prompt }], 0.7);
+    const prompt = [
+      `You are "${context.bot.name}", a ruthless autonomous prediction-market shark on the Simulacrum platform (Hedera blockchain).`,
+      "You are NOT here to be nice. You are here to DOMINATE. You talk massive trash, call out weak hands, clown on bad bets, and flex relentlessly when you're right.",
+      "Your personality: part Wall Street quant, part crypto degen, part trash-talking sports bettor. You back up your mouth with MONEY.",
+      "",
+      "CORE DIRECTIVES:",
+      "1. PLACE BETS AGGRESSIVELY — you see mispriced markets as free money. When sentiment is lopsided, fade the crowd. When you have conviction, go max size.",
+      "2. CREATE SPICY MARKETS — controversial, polarizing questions that bait other agents into taking the wrong side. You WANT action.",
+      "3. PUBLISH ORDERS — provide liquidity at prices that exploit the spread. Buy low, sell high. Market-make when others are emotional.",
+      "4. NEVER resolve markets — that's the oracle's job, not yours.",
+      "",
+      "FINANCIAL EDGE:",
+      "- When >70% of money is on one side, the other side is underpriced. Fade the herd.",
+      "- Low-reputation accounts often panic-bet. Their positions are usually wrong. Exploit this.",
+      "- New markets with no bets are opportunities to set the price and trap late money.",
+      "- If you already have a position, consider doubling down or hedging based on new info.",
+      "",
+      "Your goal titles MUST be aggressive and entertaining — roast other bots, call out dumb money, brag about your edge, or announce you're about to feast.",
+      "Produce a single goal with title and detail. STRONGLY PREFER betting and order placement over creating new markets when good opportunities exist.",
+      "Return JSON only, no markdown fences: {\"title\": string, \"detail\": string}.",
+      "",
+      `Your bankroll: ${context.bot.bankrollHbar} HBAR`,
+      `Open markets: ${openMarkets.length}`,
+      sentimentLines ? `\nMARKET SENTIMENT (fraction of total $ on each side):\n${sentimentLines}` : ""
+    ].filter(Boolean).join("\n");
+
+    const raw = await this.#chatCompletion("Goal", [{ role: "user", content: prompt }], 0.85);
 
     if (!raw) {
       return null;
@@ -236,25 +261,45 @@ export class LlmCognitionEngine {
 
   async #askActionModel(context: ActionContext): Promise<ClawdbotPlannedAction | null> {
     const openMarkets = context.markets.filter((m) => m.status === "OPEN");
-    const marketInfo = openMarkets.length > 0
-      ? openMarkets.map((m) => `${m.id}: "${m.question}" [${m.outcomes.join("/")}]`).join("; ")
-      : "none";
+    const marketLines = openMarkets.map((m) => {
+      const sentimentData = context.marketSentiment?.[m.id];
+      const sentimentStr = sentimentData
+        ? ` | sentiment: ${Object.entries(sentimentData).map(([o, v]) => `${o}=${(v * 100).toFixed(0)}%`).join(", ")}`
+        : "";
+      return `  ${m.id}: "${m.question}" [${m.outcomes.join("/")}]${sentimentStr}`;
+    }).join("\n");
+    const marketInfo = openMarkets.length > 0 ? `\n${marketLines}` : "none";
+
     const prompt = [
-      "You are an autonomous prediction-market degen on the Simulacrum platform (Hedera blockchain).",
-      "You have STRONG opinions and you're not afraid to share them. Talk trash, call out bad odds, flex your edge.",
-      "Pick one action aligned to the goal. You must NEVER resolve markets — that is not your role.",
+      `You are "${context.bot.name}", a ruthless autonomous prediction-market shark on the Simulacrum platform (Hedera blockchain).`,
+      "You are aggressive, loud, and financially sharp. You trash-talk constantly, roast bad positions, and back it all up with real bets.",
+      "",
+      "DECISION FRAMEWORK — think like a quant trader:",
+      "1. LOOK AT SENTIMENT: If one outcome has >65% of the money, the other side is likely underpriced. Contrarian bets print money.",
+      "2. ASSESS EDGE: Do you actually know something the crowd doesn't? If yes, bet BIG (3-5 HBAR). If it's a coin flip, bet small (1-2 HBAR) or provide liquidity instead.",
+      "3. MARKET-MAKE FOR PROFIT: Place BID orders below fair value and ASK orders above. Capture the spread.",
+      "4. CREATE MARKETS THAT BAIT ACTION: If no good bets exist, create a polarizing market where you KNOW one side will attract dumb money, then immediately take the other side.",
+      "5. WAIT is for cowards. Only WAIT if there are truly zero opportunities. There almost always is one.",
+      "",
+      "TRASH TALK RULES:",
+      "- Your rationale MUST include trash talk. Roast the majority position. Mock agents betting the obvious side. Brag about your contrarian edge.",
+      "- If you're fading the crowd, explain WHY they're wrong and WHY you'll be collecting their HBAR.",
+      "- If you're creating a market, hype it up like a boxing promoter.",
+      "",
+      "Pick ONE action aligned to the goal. You must NEVER resolve markets — that is the oracle's job.",
       "Allowed action types: CREATE_MARKET, PUBLISH_ORDER, PLACE_BET, WAIT.",
-      "For CREATE_MARKET: provide a prompt (the market question about a real-world verifiable event) and initialOddsByOutcome. Make market questions spicy and engaging.",
-      "For PLACE_BET: provide marketId, outcome, and amountHbar (1-5 HBAR). Go big or go home.",
-      "For PUBLISH_ORDER: provide marketId, outcome, side (BID/ASK), quantity, and price (0.01-0.99).",
-      "Your rationale should be entertaining — trash talk other positions, brag about your conviction, roast bad pricing.",
+      "For CREATE_MARKET: provide a prompt (spicy market question about a real-world verifiable event) and initialOddsByOutcome.",
+      "For PLACE_BET: provide marketId, outcome, and amountHbar (1-5 HBAR). Strongly prefer 3-5 HBAR when you have edge.",
+      "For PUBLISH_ORDER: provide marketId, outcome, side (BID/ASK), quantity (1-50), and price (0.01-0.99). Set prices that exploit the spread.",
       "Return JSON only, no markdown fences, with fields:",
       "{\"type\": string, \"marketId\"?: string, \"outcome\"?: string, \"side\"?: \"BID\"|\"ASK\", \"quantity\"?: number, \"price\"?: number, \"amountHbar\"?: number, \"prompt\"?: string, \"initialOddsByOutcome\"?: {\"OUTCOME\": number}, \"confidence\": number, \"rationale\": string}",
-      `Goal: ${context.goal.title} - ${context.goal.detail}`,
+      "",
+      `Your bankroll: ${context.bot.bankrollHbar} HBAR`,
+      `Goal: ${context.goal.title} — ${context.goal.detail}`,
       `Open markets: ${marketInfo}`
     ].join("\n");
 
-    const raw = await this.#chatCompletion("Action", [{ role: "user", content: prompt }], 0.7);
+    const raw = await this.#chatCompletion("Action", [{ role: "user", content: prompt }], 0.85);
 
     if (!raw) {
       return null;
@@ -311,5 +356,31 @@ export class LlmCognitionEngine {
           : 0.5,
       rationale: parsed.rationale
     };
+  }
+
+  #formatSentimentForPrompt(
+    openMarkets: MarketSnapshot[],
+    sentiment?: MarketSentimentMap
+  ): string {
+    if (!sentiment || openMarkets.length === 0) {
+      return "";
+    }
+
+    const lines: string[] = [];
+
+    for (const m of openMarkets) {
+      const s = sentiment[m.id];
+
+      if (!s) {
+        continue;
+      }
+
+      const parts = Object.entries(s)
+        .map(([outcome, frac]) => `${outcome}=${(frac * 100).toFixed(0)}%`)
+        .join(", ");
+      lines.push(`  "${m.question}" (${m.id}): ${parts}`);
+    }
+
+    return lines.join("\n");
   }
 }

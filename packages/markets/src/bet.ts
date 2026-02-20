@@ -299,6 +299,18 @@ export async function placeBet(
     throw new MarketError(`Market ${input.marketId} is not open for betting.`);
   }
 
+  if (input.bettorAccountId === market.creatorAccountId) {
+    throw new MarketError(
+      `Account ${input.bettorAccountId} cannot bet on a market it created.`
+    );
+  }
+
+  if (input.bettorAccountId === market.escrowAccountId) {
+    throw new MarketError(
+      `Account ${input.bettorAccountId} cannot bet on a market where it is the escrow.`
+    );
+  }
+
   const normalizedOutcome = input.outcome.trim().toUpperCase();
 
   if (!market.outcomes.includes(normalizedOutcome)) {

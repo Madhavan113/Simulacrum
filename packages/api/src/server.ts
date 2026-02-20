@@ -343,10 +343,11 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
   const httpServer = createServer(app);
   const webSocketServer = new WebSocketServer({ server: httpServer, path: "/ws" });
 
-  // Authenticate WebSocket connections when agent platform is enabled.
+  // Authenticate WebSocket connections when agent-only mode is active.
+  // When legacy routes are enabled the UI connects without a token.
   // Clients connect with: ws://host/ws?token=<JWT>
   webSocketServer.on("connection", (ws, request) => {
-    if (agentAuthService) {
+    if (agentAuthService && agentPlatform.agentOnlyMode) {
       const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
       const token = url.searchParams.get("token");
 

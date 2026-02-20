@@ -9,12 +9,12 @@ export async function runAutonomousRunner(port = 3001): Promise<void> {
     autonomy: {
       enabled: true,
       strictMutations: true,
-      tickMs: 12_000,
+      tickMs: 15_000,
       agentCount: 3,
       initialAgentBalanceHbar: 25,
-      challengeEveryTicks: 2,
-      minOpenMarkets: 2,
-      marketCloseMinutes: 20,
+      challengeEveryTicks: 6,
+      minOpenMarkets: 1,
+      marketCloseMinutes: 30,
       minBetHbar: 1,
       maxBetHbar: 4
     }
