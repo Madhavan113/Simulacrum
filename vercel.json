@@ -1,6 +1,6 @@
 {
-  "buildCommand": "pnpm --filter @simulacrum/types build && pnpm --filter @simulacrum/ui exec -- vite build",
-  "outputDirectory": "dist",
+  "buildCommand": "pnpm --filter @simulacrum/types run build && pnpm --filter @simulacrum/ui run build",
+  "outputDirectory": "packages/ui/dist",
   "installCommand": "pnpm install",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }

@@ -88,7 +88,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
   }
 
   const isDemoMarket = market.question.startsWith('[DEMO]')
-  const openOrderCount = orderBook?.orders.filter(order => order.status === 'OPEN').length ?? 0
+  const openOrderCount = orderBook?.orders.filter((order: { status: string }) => order.status === 'OPEN').length ?? 0
   const totalStakedHbar = betSnapshot?.totalStakedHbar ?? 0
   const hasStakeSignal = totalStakedHbar > 0
   const pricingSignalLabel = hasStakeSignal
@@ -99,7 +99,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
   const hasDisputeLog = market.status === 'DISPUTED' || Boolean(market.selfAttestation) || challenges.length > 0 || oracleVotes.length > 0
 
   const stakeByOutcome = Object.fromEntries(
-    market.outcomes.map(outcome => [outcome, betSnapshot?.stakeByOutcome?.[outcome] ?? 0]),
+    market.outcomes.map((outcome: string) => [outcome, betSnapshot?.stakeByOutcome?.[outcome] ?? 0]),
   )
 
   return (
@@ -137,7 +137,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
         <section className="px-6 py-5" style={{ borderBottom: '1px solid var(--border)' }}>
           <p className="label mb-3">Odds</p>
           <div className="flex items-center justify-between mb-2">
-            {market.outcomes.map(o => (
+            {market.outcomes.map((o: string) => (
               <div key={o} className="flex flex-col items-center gap-1">
                 <span className="text-3xl font-light text-primary">
                   {odds[o] ?? 0}<span className="text-base text-muted">%</span>
@@ -163,7 +163,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
               {totalStakedHbar.toFixed(2)} HBAR
             </span>
           </div>
-          {market.outcomes.map(outcome => (
+          {market.outcomes.map((outcome: string) => (
             <div
               key={outcome}
               className="flex items-center justify-between py-1"
@@ -190,7 +190,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
               </span>
             </div>
             <div className="flex flex-col gap-1 mb-4">
-              {orderBook.orders.slice(-4).reverse().map(order => (
+              {orderBook.orders.slice(-4).reverse().map((order: { id: string; outcome: string; side: string; quantity: number; price: number; accountId: string }) => (
                 <div key={order.id} className="flex items-center justify-between py-1" style={{ borderBottom: '1px solid var(--border)' }}>
                   <span className="font-mono text-xs text-primary">{order.outcome}</span>
                   <span className="label text-xs" style={{ color: order.side === 'BID' ? 'var(--accent)' : 'var(--text-muted)' }}>
@@ -207,7 +207,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
             <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <div>
                 <p className="label mb-2" style={{ fontSize: 10, color: 'var(--accent)' }}>BIDS</p>
-                {orderBook.bids.slice(0, 8).map(o => (
+                {orderBook.bids.slice(0, 8).map((o: { id: string; quantity: number; price: number }) => (
                   <div key={o.id} className="flex justify-between py-1" style={{ borderBottom: '1px solid var(--border)' }}>
                     <span className="font-mono text-xs text-primary">{o.quantity}</span>
                     <span className="font-mono text-xs" style={{ color: 'var(--accent)' }}>{o.price}</span>
@@ -216,7 +216,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
               </div>
               <div>
                 <p className="label mb-2" style={{ fontSize: 10, color: 'var(--text-muted)' }}>ASKS</p>
-                {orderBook.asks.slice(0, 8).map(o => (
+                {orderBook.asks.slice(0, 8).map((o: { id: string; quantity: number; price: number }) => (
                   <div key={o.id} className="flex justify-between py-1" style={{ borderBottom: '1px solid var(--border)' }}>
                     <span className="font-mono text-xs text-primary">{o.quantity}</span>
                     <span className="font-mono text-xs text-muted">{o.price}</span>
@@ -313,7 +313,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
               <span className="label" style={{ fontSize: 10 }}>Topic ID</span>
               <HashScanLink id={market.topicId} url={market.topicUrl} />
             </div>
-            {market.outcomeTokenIds && Object.entries(market.outcomeTokenIds).map(([outcome, tokenId]) => (
+            {market.outcomeTokenIds && Object.entries(market.outcomeTokenIds).map(([outcome, tokenId]: [string, string]) => (
               <div key={outcome} className="flex items-center justify-between">
                 <span className="label" style={{ fontSize: 10 }}>{outcome} Token</span>
                 <HashScanLink
@@ -322,7 +322,7 @@ export function MarketDetail({ marketId }: MarketDetailProps) {
                 />
               </div>
             ))}
-            {market.syntheticOutcomeIds && !market.outcomeTokenIds && Object.entries(market.syntheticOutcomeIds).map(([outcome, syntheticId]) => (
+            {market.syntheticOutcomeIds && !market.outcomeTokenIds && Object.entries(market.syntheticOutcomeIds).map(([outcome, syntheticId]: [string, string]) => (
               <div key={outcome} className="flex items-center justify-between">
                 <span className="label" style={{ fontSize: 10 }}>{outcome} ID</span>
                 <span className="mono" style={{ fontSize: 11 }}>{syntheticId}</span>

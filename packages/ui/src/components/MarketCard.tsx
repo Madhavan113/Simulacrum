@@ -73,7 +73,7 @@ export function MarketCard({ market, onClick, horizontal = false, stakeByOutcome
 
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
-            {market.outcomes.map(o => (
+            {market.outcomes.map((o: string) => (
               <span key={o} className="label" style={{ fontSize: 10 }}>{o}</span>
             ))}
           </div>

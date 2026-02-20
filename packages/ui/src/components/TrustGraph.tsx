@@ -32,8 +32,8 @@ export function TrustGraphViz({ graph, width = 320, height = 280 }: TrustGraphPr
     const el = d3.select(svg)
     el.selectAll('*').remove()
 
-    const nodes: SimNode[] = graph.nodes.map(id => ({ id }))
-    const links: SimLink[] = graph.edges.map(e => ({
+    const nodes: SimNode[] = graph.nodes.map((id: string) => ({ id }))
+    const links: SimLink[] = graph.edges.map((e: { from: string; to: string; weight: number; attestations: number }) => ({
       source: e.from,
       target: e.to,
       weight: e.weight,
