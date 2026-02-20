@@ -26,6 +26,7 @@ import {
   claimWinnings,
   createMarket,
   getMarketStore,
+  persistMarketStore,
   placeBet,
   publishOrder,
   resolveMarket,
@@ -1399,6 +1400,7 @@ export class ClawdbotNetwork {
 
     await this.ensureSharedEscrow();
     await this.ensureBotPopulation();
+    this.closeExpiredMarketsOnStartup();
     await this.runTick();
 
     this.#interval = setInterval(() => {
@@ -2304,8 +2306,8 @@ export class ClawdbotNetwork {
       }
 
       const failures = this.#consecutiveFailures.get(runtime.agent.id) ?? 0;
-      if (failures >= 3) {
-        const skipTicks = Math.min(failures, 10);
+      if (failures >= 5) {
+        const skipTicks = Math.min(Math.floor(failures / 2), 5);
         if (this.#tickCount % skipTicks !== 0) {
           continue;
         }
@@ -2613,6 +2615,24 @@ export class ClawdbotNetwork {
       case "WAIT":
       default:
         return;
+    }
+  }
+
+  private closeExpiredMarketsOnStartup(): void {
+    const store = getMarketStore();
+    const now = Date.now();
+    let closed = 0;
+
+    for (const market of store.markets.values()) {
+      if (market.status === "OPEN" && Date.parse(market.closeTime) <= now) {
+        market.status = "CLOSED";
+        closed += 1;
+      }
+    }
+
+    if (closed > 0) {
+      persistMarketStore(store);
+      console.log(`[clawdbot] Startup: closed ${closed} expired market(s).`);
     }
   }
 
