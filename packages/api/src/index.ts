@@ -76,6 +76,7 @@ export {
   type ApiEventListener
 } from "./events.js";
 
+export { createAdminAuthMiddleware, type AdminAuthMiddlewareOptions } from "./middleware/admin-auth.js";
 export { createAuthMiddleware, type AuthMiddlewareOptions } from "./middleware/auth.js";
 export {
   createAutonomyMutationGuard,

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import type { AutonomyChallengeInput, AutonomyEngine } from "../autonomy/engine.js";
+import { createAdminAuthMiddleware } from "../middleware/admin-auth.js";
 import { validateBody } from "../middleware/validation.js";
 
 const challengeSchema = z.object({
@@ -14,6 +15,7 @@ const challengeSchema = z.object({
 
 export function createAutonomyRouter(engine: AutonomyEngine | null): Router {
   const router = Router();
+  const adminOnly = createAdminAuthMiddleware();
 
   router.get("/status", (_request, response) => {
     if (!engine) {
@@ -28,7 +30,7 @@ export function createAutonomyRouter(engine: AutonomyEngine | null): Router {
     response.json(engine.getStatus());
   });
 
-  router.post("/start", async (_request, response) => {
+  router.post("/start", adminOnly, async (_request, response) => {
     if (!engine) {
       response.status(400).json({ error: "Autonomy engine not configured" });
       return;
@@ -38,7 +40,7 @@ export function createAutonomyRouter(engine: AutonomyEngine | null): Router {
     response.json(engine.getStatus());
   });
 
-  router.post("/stop", async (_request, response) => {
+  router.post("/stop", adminOnly, async (_request, response) => {
     if (!engine) {
       response.status(400).json({ error: "Autonomy engine not configured" });
       return;
@@ -48,7 +50,7 @@ export function createAutonomyRouter(engine: AutonomyEngine | null): Router {
     response.json(engine.getStatus());
   });
 
-  router.post("/run-now", async (_request, response) => {
+  router.post("/run-now", adminOnly, async (_request, response) => {
     if (!engine) {
       response.status(400).json({ error: "Autonomy engine not configured" });
       return;
@@ -60,6 +62,7 @@ export function createAutonomyRouter(engine: AutonomyEngine | null): Router {
 
   router.post(
     "/challenges",
+    adminOnly,
     validateBody(challengeSchema),
     async (request, response) => {
       if (!engine) {

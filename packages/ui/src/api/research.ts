@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { adminFetch, apiFetch } from './client'
 import type {
   ResearchEngineStatus,
   ResearchPublication,
@@ -41,11 +41,11 @@ export const researchApi = {
     apiFetch<{ agents: ResearchAgentProfile[] }>('/research/agents').then((r) => r.agents),
 
   start: () =>
-    apiFetch<ResearchEngineStatus>('/research/start', { method: 'POST' }),
+    adminFetch<ResearchEngineStatus>('/research/start', { method: 'POST' }),
 
   stop: () =>
-    apiFetch<ResearchEngineStatus>('/research/stop', { method: 'POST' }),
+    adminFetch<ResearchEngineStatus>('/research/stop', { method: 'POST' }),
 
   runNow: () =>
-    apiFetch<ResearchEngineStatus>('/research/run-now', { method: 'POST' }),
+    adminFetch<ResearchEngineStatus>('/research/run-now', { method: 'POST' }),
 }

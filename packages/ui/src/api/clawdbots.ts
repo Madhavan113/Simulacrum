@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { adminFetch, apiFetch } from './client'
 import type {
   ClawdbotGoal,
   ClawdbotMessage,
@@ -15,11 +15,11 @@ export const clawdbotsApi = {
   },
   thread:  (limit = 50) =>
     apiFetch<{ messages: ClawdbotMessage[] }>(`/clawdbots/thread?limit=${limit}`).then(r => r.messages),
-  start:   () => apiFetch<ClawdbotNetworkStatus>('/clawdbots/start',   { method: 'POST' }),
-  stop:    () => apiFetch<ClawdbotNetworkStatus>('/clawdbots/stop',    { method: 'POST' }),
-  runNow:  () => apiFetch<ClawdbotNetworkStatus>('/clawdbots/run-now', { method: 'POST' }),
+  start:   () => adminFetch<ClawdbotNetworkStatus>('/clawdbots/start',   { method: 'POST' }),
+  stop:    () => adminFetch<ClawdbotNetworkStatus>('/clawdbots/stop',    { method: 'POST' }),
+  runNow:  () => adminFetch<ClawdbotNetworkStatus>('/clawdbots/run-now', { method: 'POST' }),
   runDemoTimeline: () =>
-    apiFetch<{
+    adminFetch<{
       runId: string
       status: 'started'
       source: 'demo-script'

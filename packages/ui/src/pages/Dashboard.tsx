@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
+import { getAdminKey, setAdminKey } from '../api/client'
 import { clawdbotsApi } from '../api/clawdbots'
 import type { WsEvent } from '../api/types'
 import { ActivityFeed } from '../components/ActivityFeed'
@@ -43,6 +44,20 @@ export function Dashboard() {
     stakeByMarketId[marketId] = query.data.stakeByOutcome
   }
 
+  const [adminKeyInput, setAdminKeyInput] = useState(getAdminKey() ?? '')
+  const [adminKeySet, setAdminKeySet] = useState(Boolean(getAdminKey()))
+
+  const handleAdminKeySave = useCallback(() => {
+    const trimmed = adminKeyInput.trim()
+    if (trimmed) {
+      setAdminKey(trimmed)
+      setAdminKeySet(true)
+    } else {
+      setAdminKey(null)
+      setAdminKeySet(false)
+    }
+  }, [adminKeyInput])
+
   const hasDemoMarkets = useMemo(() => markets.some(m => m.question.startsWith('[DEMO]')), [markets])
   const activeGoals = useMemo(() => goals.filter(g => g.status === 'IN_PROGRESS' || g.status === 'PENDING'), [goals])
 
@@ -66,6 +81,37 @@ export function Dashboard() {
           onStop={() => clawdbotStop.mutate()}
           isLoading={clawdbotStart.isPending || clawdbotStop.isPending}
         />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            type="password"
+            placeholder="Admin key"
+            value={adminKeyInput}
+            onChange={e => { setAdminKeyInput(e.target.value); setAdminKeySet(false) }}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdminKeySave() }}
+            className="label text-xs px-2 py-1"
+            style={{
+              width: 140,
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              color: 'var(--text-primary)',
+              outline: 'none',
+            }}
+          />
+          <button
+            onClick={handleAdminKeySave}
+            className="label text-xs px-2 py-1"
+            style={{
+              background: adminKeySet ? 'rgba(107,143,107,0.15)' : 'var(--bg-surface)',
+              border: `1px solid ${adminKeySet ? 'var(--status-resolved-border)' : 'var(--border)'}`,
+              borderRadius: 6,
+              cursor: 'pointer',
+              color: adminKeySet ? 'var(--status-resolved-text)' : 'var(--text-muted)',
+            }}
+          >
+            {adminKeySet ? '✓' : 'Set'}
+          </button>
+        </div>
         <div className="flex-1" />
         <span className="label text-xs" style={{ color: 'var(--text-muted)' }}>
           {clawdbotStatus?.botCount ?? 0} community bots

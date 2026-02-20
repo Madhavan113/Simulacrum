@@ -66,6 +66,9 @@ describe("api server", () => {
   });
 
   it("blocks manual mutations when strict autonomy mode is enabled", async () => {
+    const adminKey = "test-admin-secret";
+    process.env.SIMULACRUM_ADMIN_KEY = adminKey;
+
     const server = createApiServer({
       autonomy: {
         strictMutations: true
@@ -84,11 +87,20 @@ describe("api server", () => {
     expect(blockedMutation.status).toBe(403);
     expect(blockedMutation.body.error).toMatch(/Strict autonomous mode/i);
 
-    const autonomyAllowed = await request(server.app).post("/autonomy/run-now");
+    const autonomyNoKey = await request(server.app).post("/autonomy/run-now");
+    expect(autonomyNoKey.status).toBe(403);
+
+    const autonomyAllowed = await request(server.app)
+      .post("/autonomy/run-now")
+      .set("x-admin-key", adminKey);
     expect(autonomyAllowed.status).toBe(200);
 
-    const clawdbotsAllowed = await request(server.app).post("/clawdbots/run-now");
+    const clawdbotsAllowed = await request(server.app)
+      .post("/clawdbots/run-now")
+      .set("x-admin-key", adminKey);
     expect(clawdbotsAllowed.status).toBe(200);
+
+    delete process.env.SIMULACRUM_ADMIN_KEY;
   });
 
   it("exposes clawdbot status endpoint", async () => {

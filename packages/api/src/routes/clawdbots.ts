@@ -10,6 +10,7 @@ import type {
   RegisterHostedClawdbotInput,
   ResolveClawdbotMarketInput
 } from "../clawdbots/network.js";
+import { createAdminAuthMiddleware } from "../middleware/admin-auth.js";
 import { validateBody } from "../middleware/validation.js";
 
 function demoBackdoorEnabled(): boolean {
@@ -138,6 +139,7 @@ const botMessageSchema = z.object({
 
 export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
   const router = Router();
+  const adminOnly = createAdminAuthMiddleware();
 
   router.get("/status", (_request, response) => {
     if (!network) {
@@ -200,7 +202,7 @@ export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
     }
   });
 
-  router.post("/register", validateBody(hostedRegisterSchema), async (request, response) => {
+  router.post("/register", adminOnly, validateBody(hostedRegisterSchema), async (request, response) => {
     if (!network) {
       response.status(400).json({ error: "Clawdbot network not configured" });
       return;
@@ -218,7 +220,7 @@ export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
     }
   });
 
-  router.post("/start", async (_request, response) => {
+  router.post("/start", adminOnly, async (_request, response) => {
     if (!network) {
       response.status(400).json({ error: "Clawdbot network not configured" });
       return;
@@ -232,7 +234,7 @@ export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
     }
   });
 
-  router.post("/stop", async (_request, response) => {
+  router.post("/stop", adminOnly, async (_request, response) => {
     if (!network) {
       response.status(400).json({ error: "Clawdbot network not configured" });
       return;
@@ -242,7 +244,7 @@ export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
     response.json(network.getStatus());
   });
 
-  router.post("/run-now", async (_request, response) => {
+  router.post("/run-now", adminOnly, async (_request, response) => {
     if (!network) {
       response.status(400).json({ error: "Clawdbot network not configured" });
       return;
@@ -252,7 +254,7 @@ export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
     response.json(network.getStatus());
   });
 
-  router.post("/bots/:botId/start", (request, response) => {
+  router.post("/bots/:botId/start", adminOnly, (request, response) => {
     if (!network) {
       response.status(400).json({ error: "Clawdbot network not configured" });
       return;
@@ -270,7 +272,7 @@ export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
     }
   });
 
-  router.post("/bots/:botId/stop", (request, response) => {
+  router.post("/bots/:botId/stop", adminOnly, (request, response) => {
     if (!network) {
       response.status(400).json({ error: "Clawdbot network not configured" });
       return;
@@ -288,7 +290,7 @@ export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
     }
   });
 
-  router.post("/bots/:botId/suspend", (request, response) => {
+  router.post("/bots/:botId/suspend", adminOnly, (request, response) => {
     if (!network) {
       response.status(400).json({ error: "Clawdbot network not configured" });
       return;
@@ -306,7 +308,7 @@ export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
     }
   });
 
-  router.post("/bots/:botId/unsuspend", (request, response) => {
+  router.post("/bots/:botId/unsuspend", adminOnly, (request, response) => {
     if (!network) {
       response.status(400).json({ error: "Clawdbot network not configured" });
       return;
@@ -344,6 +346,7 @@ export function createClawdbotsRouter(network: ClawdbotNetwork | null): Router {
 
   router.patch(
     "/bots/:botId/credentials",
+    adminOnly,
     validateBody(rotateCredentialsSchema),
     (request, response) => {
       if (!network) {

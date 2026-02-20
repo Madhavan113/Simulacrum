@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { getResearchStore } from "@simulacrum/research";
+import { createAdminAuthMiddleware } from "../middleware/admin-auth.js";
 import type { ResearchEngine } from "../research/engine.js";
 
 export function createResearchRouter(engine: ResearchEngine): Router {
   const router = Router();
+  const adminOnly = createAdminAuthMiddleware();
 
   router.get("/status", (_req, res) => {
     res.json(engine.getStatus());
@@ -67,7 +69,7 @@ export function createResearchRouter(engine: ResearchEngine): Router {
     res.json({ agents });
   });
 
-  router.post("/start", async (_req, res) => {
+  router.post("/start", adminOnly, async (_req, res) => {
     const status = engine.getStatus();
     if (!status.enabled) {
       res.status(409).json({ error: "Research engine is disabled. Set RESEARCH_ENABLED=true to enable." });
@@ -85,7 +87,7 @@ export function createResearchRouter(engine: ResearchEngine): Router {
     }
   });
 
-  router.post("/stop", async (_req, res) => {
+  router.post("/stop", adminOnly, async (_req, res) => {
     try {
       await engine.stop();
       res.json(engine.getStatus());
@@ -94,7 +96,7 @@ export function createResearchRouter(engine: ResearchEngine): Router {
     }
   });
 
-  router.post("/run-now", async (_req, res) => {
+  router.post("/run-now", adminOnly, async (_req, res) => {
     const status = engine.getStatus();
     if (!status.enabled) {
       res.status(409).json({ error: "Research engine is disabled." });
