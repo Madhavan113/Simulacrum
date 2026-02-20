@@ -2359,7 +2359,13 @@ export class ClawdbotNetwork {
           actionType: action.type
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const rootCause =
+          error instanceof Error && error.cause instanceof Error
+            ? error.cause.message
+            : undefined;
+        const message = rootCause
+          ? `${error instanceof Error ? error.message : String(error)} Cause: ${rootCause}`
+          : error instanceof Error ? error.message : String(error);
         console.error(`[clawdbot] Goal failed for ${runtime.agent.name}: ${message}`);
         const failedAt = new Date().toISOString();
         const failed: ClawdbotGoal = {
@@ -2492,11 +2498,12 @@ export class ClawdbotNetwork {
           rationale: action.rationale
         });
 
+        const isOwnMarket = targetMarket?.creatorAccountId === runtime.wallet.accountId;
         const existingBets = getMarketStore().bets.get(marketId) ?? [];
         const alreadyStaked = existingBets.some((bet) => bet.bettorAccountId === runtime.wallet.accountId);
         const bootstrapStake = Math.min(this.#maxBetHbar, this.#minBetHbar);
 
-        if (!alreadyStaked && bootstrapStake > 0 && runtime.agent.bankrollHbar >= bootstrapStake) {
+        if (!isOwnMarket && !alreadyStaked && bootstrapStake > 0 && runtime.agent.bankrollHbar >= bootstrapStake) {
           try {
             await runtime.adapter.handleToolCall({
               name: "place_bet",
@@ -2526,7 +2533,13 @@ export class ClawdbotNetwork {
         return;
       }
       case "PLACE_BET": {
-        const market = openMarkets.find((entry) => entry.id === action.marketId) ?? fallbackMarket;
+        const eligibleMarkets = openMarkets.filter(
+          (entry) => entry.creatorAccountId !== runtime.wallet.accountId
+        );
+        const market =
+          eligibleMarkets.find((entry) => entry.id === action.marketId) ??
+          eligibleMarkets[0] ??
+          null;
 
         if (!market) {
           return;
