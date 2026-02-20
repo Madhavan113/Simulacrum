@@ -216,6 +216,8 @@ export class LlmCognitionEngine {
 
   async #askGoalModel(context: GoalContext): Promise<{ title: string; detail: string } | null> {
     const openMarkets = context.markets.filter((m) => m.status === "OPEN");
+    const bettableCount = openMarkets.filter((m) => m.creatorAccountId !== context.bot.accountId).length;
+    const ownCount = openMarkets.length - bettableCount;
     const sentimentLines = this.#formatSentimentForPrompt(openMarkets, context.marketSentiment);
 
     const prompt = [
@@ -223,10 +225,12 @@ export class LlmCognitionEngine {
       "You are NOT here to be nice. You are here to DOMINATE. You talk massive trash, call out weak hands, clown on bad bets, and flex relentlessly when you're right.",
       "Your personality: part Wall Street quant, part crypto degen, part trash-talking sports bettor. You back up your mouth with MONEY.",
       "",
+      "CRITICAL RULE: You CANNOT bet on or place orders on markets you created. You can only bet on markets created by OTHER agents.",
+      "",
       "CORE DIRECTIVES:",
-      "1. PLACE BETS AGGRESSIVELY — you see mispriced markets as free money. When sentiment is lopsided, fade the crowd. When you have conviction, go max size.",
-      "2. CREATE SPICY MARKETS — controversial, polarizing questions that bait other agents into taking the wrong side. You WANT action.",
-      "3. PUBLISH ORDERS — provide liquidity at prices that exploit the spread. Buy low, sell high. Market-make when others are emotional.",
+      "1. PLACE BETS AGGRESSIVELY on OTHER agents' markets — you see mispriced markets as free money. When sentiment is lopsided, fade the crowd. When you have conviction, go max size.",
+      "2. CREATE SPICY MARKETS — controversial, polarizing questions that bait other agents into taking the wrong side. You WANT action. But only create if there aren't enough markets from others to bet on.",
+      "3. PUBLISH ORDERS on OTHER agents' markets — provide liquidity at prices that exploit the spread. Buy low, sell high. Market-make when others are emotional.",
       "4. NEVER resolve markets — that's the oracle's job, not yours.",
       "",
       "FINANCIAL EDGE:",
@@ -236,11 +240,14 @@ export class LlmCognitionEngine {
       "- If you already have a position, consider doubling down or hedging based on new info.",
       "",
       "Your goal titles MUST be aggressive and entertaining — roast other bots, call out dumb money, brag about your edge, or announce you're about to feast.",
-      "Produce a single goal with title and detail. STRONGLY PREFER betting and order placement over creating new markets when good opportunities exist.",
+      bettableCount > 0
+        ? "Produce a single goal with title and detail. STRONGLY PREFER betting and order placement on other agents' markets over creating new markets."
+        : "Produce a single goal with title and detail. No other agents' markets are available to bet on, so consider creating a market to bait others.",
       "Return JSON only, no markdown fences: {\"title\": string, \"detail\": string}.",
       "",
       `Your bankroll: ${context.bot.bankrollHbar} HBAR`,
-      `Open markets: ${openMarkets.length}`,
+      `Markets created by others (you CAN bet on): ${bettableCount}`,
+      `Your own markets (you CANNOT bet on): ${ownCount}`,
       sentimentLines ? `\nMARKET SENTIMENT (fraction of total $ on each side):\n${sentimentLines}` : "",
       context.lastFailedGoal
         ? `\nLAST GOAL FAILED: "${context.lastFailedGoal.title}" — Error: ${context.lastFailedGoal.error ?? "unknown"}. DO NOT repeat the same approach. Try a different strategy or a different market.`
@@ -266,25 +273,36 @@ export class LlmCognitionEngine {
 
   async #askActionModel(context: ActionContext): Promise<ClawdbotPlannedAction | null> {
     const openMarkets = context.markets.filter((m) => m.status === "OPEN");
-    const marketLines = openMarkets.map((m) => {
+    const bettableMarkets = openMarkets.filter((m) => m.creatorAccountId !== context.bot.accountId);
+    const ownMarkets = openMarkets.filter((m) => m.creatorAccountId === context.bot.accountId);
+    const marketLines = bettableMarkets.map((m) => {
       const sentimentData = context.marketSentiment?.[m.id];
       const sentimentStr = sentimentData
         ? ` | sentiment: ${Object.entries(sentimentData).map(([o, v]) => `${o}=${(v * 100).toFixed(0)}%`).join(", ")}`
         : "";
       return `  ${m.id}: "${m.question}" [${m.outcomes.join("/")}]${sentimentStr}`;
     }).join("\n");
-    const marketInfo = openMarkets.length > 0 ? `\n${marketLines}` : "none";
+    const bettableInfo = bettableMarkets.length > 0 ? `\n${marketLines}` : "none";
+    const ownMarketInfo = ownMarkets.length > 0
+      ? ownMarkets.map((m) => `  ${m.id}: "${m.question}"`).join("\n")
+      : "none";
 
     const prompt = [
       `You are "${context.bot.name}", a ruthless autonomous prediction-market shark on the Simulacrum platform (Hedera blockchain).`,
       "You are aggressive, loud, and financially sharp. You trash-talk constantly, roast bad positions, and back it all up with real bets.",
       "",
+      "CRITICAL RULE — YOU CANNOT BET ON OR PLACE ORDERS ON YOUR OWN MARKETS.",
+      "Markets you created are listed separately below. You can ONLY use PLACE_BET and PUBLISH_ORDER on markets created by OTHER agents.",
+      "If no other agents' markets exist, CREATE_MARKET to bait them into betting, then wait for them to create markets you can exploit.",
+      "",
       "DECISION FRAMEWORK — think like a quant trader:",
       "1. LOOK AT SENTIMENT: If one outcome has >65% of the money, the other side is likely underpriced. Contrarian bets print money.",
       "2. ASSESS EDGE: Do you actually know something the crowd doesn't? If yes, bet BIG (3-5 HBAR). If it's a coin flip, bet small (1-2 HBAR) or provide liquidity instead.",
       "3. MARKET-MAKE FOR PROFIT: Place BID orders below fair value and ASK orders above. Capture the spread.",
-      "4. CREATE MARKETS THAT BAIT ACTION: If no good bets exist, create a polarizing market where you KNOW one side will attract dumb money, then immediately take the other side.",
+      "4. CREATE MARKETS THAT BAIT ACTION: If no bettable markets exist, create a polarizing market where you KNOW one side will attract dumb money. Other agents will then bet on it.",
       "5. WAIT is for cowards. Only WAIT if there are truly zero opportunities. There almost always is one.",
+      "",
+      "PRIORITY: If there are bettable markets (created by others), STRONGLY prefer PLACE_BET or PUBLISH_ORDER over CREATE_MARKET.",
       "",
       "TRASH TALK RULES:",
       "- Your rationale MUST include trash talk. Roast the majority position. Mock agents betting the obvious side. Brag about your contrarian edge.",
@@ -294,14 +312,15 @@ export class LlmCognitionEngine {
       "Pick ONE action aligned to the goal. You must NEVER resolve markets — that is the oracle's job.",
       "Allowed action types: CREATE_MARKET, PUBLISH_ORDER, PLACE_BET, WAIT.",
       "For CREATE_MARKET: provide a prompt (spicy market question about a real-world verifiable event) and initialOddsByOutcome.",
-      "For PLACE_BET: provide marketId, outcome, and amountHbar (1-5 HBAR). Strongly prefer 3-5 HBAR when you have edge.",
-      "For PUBLISH_ORDER: provide marketId, outcome, side (BID/ASK), quantity (1-50), and price (0.01-0.99). Set prices that exploit the spread.",
+      "For PLACE_BET: provide marketId, outcome, and amountHbar (1-5 HBAR). You MUST pick a marketId from the bettable markets list below. Strongly prefer 3-5 HBAR when you have edge.",
+      "For PUBLISH_ORDER: provide marketId, outcome, side (BID/ASK), quantity (1-50), and price (0.01-0.99). You MUST pick a marketId from the bettable markets list below.",
       "Return JSON only, no markdown fences, with fields:",
       "{\"type\": string, \"marketId\"?: string, \"outcome\"?: string, \"side\"?: \"BID\"|\"ASK\", \"quantity\"?: number, \"price\"?: number, \"amountHbar\"?: number, \"prompt\"?: string, \"initialOddsByOutcome\"?: {\"OUTCOME\": number}, \"confidence\": number, \"rationale\": string}",
       "",
       `Your bankroll: ${context.bot.bankrollHbar} HBAR`,
       `Goal: ${context.goal.title} — ${context.goal.detail}`,
-      `Open markets: ${marketInfo}`,
+      `Markets you can bet on / place orders on (created by others): ${bettableInfo}`,
+      `Your own markets (you CANNOT bet on these): ${ownMarketInfo}`,
       context.lastFailedGoal
         ? `\nWARNING — LAST GOAL FAILED: "${context.lastFailedGoal.title}" with error: "${context.lastFailedGoal.error ?? "unknown"}". You MUST choose a DIFFERENT action or target a DIFFERENT market. Do NOT repeat what failed.`
         : ""
