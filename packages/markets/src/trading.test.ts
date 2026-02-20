@@ -92,7 +92,7 @@ describe("bet, resolve, and claim", () => {
       {
         marketId: "0.0.7001",
         resolvedOutcome: "YES",
-        resolvedByAccountId: "0.0.9999"
+        resolvedByAccountId: "0.0.1001"
       },
       {
         store,

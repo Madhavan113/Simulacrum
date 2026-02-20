@@ -245,11 +245,7 @@ export async function createMarket(
       : undefined;
   const store = getMarketStore(options.store);
 
-  if (!input.escrowAccountId && input.creatorAccountId) {
-    throw new MarketError(
-      "escrowAccountId is required. The market creator should not also be the escrow holder."
-    );
-  }
+  const resolvedEscrow = input.escrowAccountId ?? input.creatorAccountId;
 
   try {
     const topic = await deps.createTopic(`MARKET:${input.question}`, undefined, {
@@ -267,7 +263,7 @@ export async function createMarket(
       question: input.question,
       description: input.description,
       creatorAccountId: input.creatorAccountId,
-      escrowAccountId: input.escrowAccountId!,
+      escrowAccountId: resolvedEscrow,
       topicId: topic.topicId,
       topicUrl: topic.topicUrl,
       closeTime: input.closeTime,

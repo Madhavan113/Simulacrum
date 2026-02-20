@@ -17,6 +17,7 @@ describe("weighted curve markets", () => {
       {
         question: "Will low-liquidity curve update?",
         creatorAccountId: "0.0.1001",
+        escrowAccountId: "0.0.5000",
         closeTime: "2026-03-01T00:00:00.000Z",
         lowLiquidity: true,
         initialOddsByOutcome: { YES: 70, NO: 30 }
