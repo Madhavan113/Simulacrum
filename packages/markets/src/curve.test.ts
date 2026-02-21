@@ -20,7 +20,8 @@ describe("weighted curve markets", () => {
         escrowAccountId: "0.0.5000",
         closeTime: "2026-03-01T00:00:00.000Z",
         lowLiquidity: true,
-        initialOddsByOutcome: { YES: 70, NO: 30 }
+        initialOddsByOutcome: { YES: 70, NO: 30 },
+        initialFundingHbar: 25
       },
       {
         store,
@@ -32,6 +33,10 @@ describe("weighted curve markets", () => {
             transactionId: "0.0.1001@1700000000.000004",
             transactionUrl: "https://hashscan.io/testnet/transaction/tx4",
             sequenceNumber: 1
+          }),
+          transferHbar: vi.fn().mockResolvedValue({
+            transactionId: "0.0.1001@1700000000.000002",
+            transactionUrl: "https://hashscan.io/testnet/transaction/tx2"
           }),
           now: () => new Date("2026-02-18T00:00:00.000Z")
         }

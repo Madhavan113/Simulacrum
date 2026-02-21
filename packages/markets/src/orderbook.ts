@@ -6,6 +6,7 @@ import type { Client } from "@hashgraph/sdk";
 import { getMarketStore, persistMarketStore, type MarketStore } from "./store.js";
 import {
   MarketError,
+  type Market,
   type MarketOrder,
   type OrderBookSnapshot,
   type OrderFill,
@@ -55,6 +56,86 @@ function toMarketError(message: string, error: unknown): MarketError {
 
 function orderSortComparator(a: MarketOrder, b: MarketOrder): number {
   return Date.parse(a.createdAt) - Date.parse(b.createdAt);
+}
+
+/**
+ * Compute mark price per outcome from the order book spread.
+ * Returns mid-price (best_bid + best_ask) / 2 for each outcome that has both sides,
+ * normalized so that percentages sum to 100 when all outcomes are covered.
+ */
+function computeClobMarkPrice(
+  orders: MarketOrder[],
+  outcomes: readonly string[]
+): Record<string, number> | undefined {
+  const markPrice: Record<string, number> = {};
+  let covered = 0;
+
+  for (const outcome of outcomes) {
+    const bestBid = orders
+      .filter((o) => o.outcome === outcome && o.side === "BID" && o.status === "OPEN")
+      .reduce((best, o) => (o.price > best ? o.price : best), -Infinity);
+    const bestAsk = orders
+      .filter((o) => o.outcome === outcome && o.side === "ASK" && o.status === "OPEN")
+      .reduce((best, o) => (o.price < best ? o.price : best), Infinity);
+
+    if (Number.isFinite(bestBid) && Number.isFinite(bestAsk)) {
+      markPrice[outcome] = (bestBid + bestAsk) / 2;
+      covered++;
+    }
+  }
+
+  if (covered === 0) {
+    return undefined;
+  }
+
+  const total = Object.values(markPrice).reduce((sum, v) => sum + v, 0);
+  if (total <= 0) {
+    return undefined;
+  }
+
+  const odds: Record<string, number> = {};
+  for (const outcome of outcomes) {
+    if (markPrice[outcome] !== undefined) {
+      odds[outcome] = Number(((markPrice[outcome] / total) * 100).toFixed(2));
+    }
+  }
+  return odds;
+}
+
+/**
+ * Update a market's currentOddsByOutcome from order book state after fills.
+ * Tries mid-price first; falls back to last fill price for binary markets.
+ */
+function updateClobMarkPrice(
+  market: Market,
+  allOrders: MarketOrder[],
+  fills: OrderFill[]
+): void {
+  const clobPrice = computeClobMarkPrice(allOrders, market.outcomes);
+
+  if (clobPrice) {
+    market.currentOddsByOutcome = clobPrice;
+    market.markPriceSource = "CLOB_MID";
+    return;
+  }
+
+  const lastFill = fills[fills.length - 1];
+  if (!lastFill) {
+    return;
+  }
+
+  const oddsByOutcome = { ...(market.currentOddsByOutcome ?? {}) };
+  oddsByOutcome[lastFill.outcome] = Number((lastFill.price * 100).toFixed(2));
+
+  if (market.outcomes.length === 2) {
+    const other = market.outcomes.find((o) => o !== lastFill.outcome);
+    if (other) {
+      oddsByOutcome[other] = Number((100 - oddsByOutcome[lastFill.outcome]).toFixed(2));
+    }
+  }
+
+  market.currentOddsByOutcome = oddsByOutcome;
+  market.markPriceSource = "CLOB_LAST_FILL";
 }
 
 async function loadOrdersFromMirrorNode(
@@ -343,6 +424,11 @@ async function matchOrdersForMarket(
   }
 
   if (fills.length > 0) {
+    const market = store.markets.get(marketId);
+    if (market) {
+      const allOrders = store.orders.get(marketId) ?? [];
+      updateClobMarkPrice(market, allOrders, fills);
+    }
     persistMarketStore(store);
   }
 
@@ -368,6 +454,7 @@ export async function getOrderBook(
     ...options.deps
   };
 
+  const market = store.markets.get(marketId)!;
   const localOrders = store.orders.get(marketId) ?? [];
   const mirrorOrders = options.includeMirrorNode
     ? await loadOrdersFromMirrorNode(marketId, options, deps)
@@ -385,6 +472,7 @@ export async function getOrderBook(
     marketId,
     orders,
     bids: orders.filter((order) => order.side === "BID" && order.status === "OPEN"),
-    asks: orders.filter((order) => order.side === "ASK" && order.status === "OPEN")
+    asks: orders.filter((order) => order.side === "ASK" && order.status === "OPEN"),
+    markPrice: computeClobMarkPrice(orders, market.outcomes)
   };
 }

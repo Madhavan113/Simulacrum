@@ -35,6 +35,7 @@ export interface CreateMarketResult {
 
 const DEFAULT_OUTCOMES = ["YES", "NO"];
 const DEFAULT_CURVE_LIQUIDITY_HBAR = 25;
+const MIN_CLOB_FUNDING_HBAR = 10;
 
 function normalizeOutcomes(outcomes?: readonly string[]): string[] {
   const resolved = outcomes && outcomes.length > 0 ? outcomes : DEFAULT_OUTCOMES;
@@ -229,6 +230,122 @@ function assertCloseTime(closeTime: string, now: Date): void {
   }
 }
 
+function validateFunding(
+  initialFundingHbar: number | undefined,
+  liquidityModel: MarketLiquidityModel,
+  curveLiquidityHbar: number | undefined
+): number {
+  if (typeof initialFundingHbar !== "number" || !Number.isFinite(initialFundingHbar) || initialFundingHbar <= 0) {
+    throw new MarketError(
+      "initialFundingHbar is required and must be a positive number. " +
+      "Markets cannot be created without economic backing."
+    );
+  }
+
+  if (isLowLiquidityModel(liquidityModel)) {
+    const requiredMin = curveLiquidityHbar ?? DEFAULT_CURVE_LIQUIDITY_HBAR;
+    if (initialFundingHbar < requiredMin) {
+      throw new MarketError(
+        `LMSR markets require initialFundingHbar >= liquidity parameter (${requiredMin} HBAR). ` +
+        `Received ${initialFundingHbar} HBAR. The liquidity parameter b must be fully collateralized.`
+      );
+    }
+  } else {
+    if (initialFundingHbar < MIN_CLOB_FUNDING_HBAR) {
+      throw new MarketError(
+        `CLOB markets require initialFundingHbar >= ${MIN_CLOB_FUNDING_HBAR} HBAR. ` +
+        `Received ${initialFundingHbar} HBAR.`
+      );
+    }
+  }
+
+  return initialFundingHbar;
+}
+
+function validateSeedOrders(
+  seedOrders: SeedOrder[] | undefined,
+  outcomes: readonly string[],
+  liquidityModel: MarketLiquidityModel
+): void {
+  if (isLowLiquidityModel(liquidityModel)) {
+    return;
+  }
+
+  if (!seedOrders || seedOrders.length === 0) {
+    throw new MarketError(
+      "CLOB markets require seedOrders with at least one BID and one ASK. " +
+      "Markets with empty order books produce no price signal."
+    );
+  }
+
+  const hasBid = seedOrders.some((o) => o.side === "BID");
+  const hasAsk = seedOrders.some((o) => o.side === "ASK");
+
+  if (!hasBid || !hasAsk) {
+    throw new MarketError(
+      "CLOB markets require seedOrders with at least one BID and one ASK."
+    );
+  }
+
+  for (const order of seedOrders) {
+    const normalizedOutcome = order.outcome.trim().toUpperCase();
+    if (!outcomes.includes(normalizedOutcome)) {
+      throw new MarketError(
+        `Seed order outcome "${order.outcome}" is not valid. ` +
+        `Supported outcomes: ${outcomes.join(", ")}.`
+      );
+    }
+    if (order.price <= 0 || order.price > 1) {
+      throw new MarketError(
+        `Seed order price ${order.price} must be between 0 (exclusive) and 1 (inclusive).`
+      );
+    }
+    if (!Number.isFinite(order.quantity) || order.quantity <= 0) {
+      throw new MarketError("Seed order quantity must be a positive number.");
+    }
+  }
+}
+
+function computeInitialClobOdds(
+  seedOrders: MarketOrder[],
+  outcomes: readonly string[]
+): Record<string, number> | undefined {
+  const markPrice: Record<string, number> = {};
+  let covered = 0;
+
+  for (const outcome of outcomes) {
+    const bids = seedOrders
+      .filter((o) => o.outcome === outcome && o.side === "BID")
+      .sort((a, b) => b.price - a.price);
+    const asks = seedOrders
+      .filter((o) => o.outcome === outcome && o.side === "ASK")
+      .sort((a, b) => a.price - b.price);
+
+    if (bids.length > 0 && asks.length > 0) {
+      markPrice[outcome] = (bids[0].price + asks[0].price) / 2;
+      covered++;
+    }
+  }
+
+  if (covered === 0) {
+    return undefined;
+  }
+
+  const total = Object.values(markPrice).reduce((sum, v) => sum + v, 0);
+  if (total <= 0) {
+    return undefined;
+  }
+
+  const odds: Record<string, number> = {};
+  for (const outcome of outcomes) {
+    if (markPrice[outcome] !== undefined) {
+      odds[outcome] = Number(((markPrice[outcome] / total) * 100).toFixed(2));
+    }
+  }
+
+  return odds;
+}
+
 function toMarketError(message: string, error: unknown): MarketError {
   if (error instanceof MarketError) {
     return error;
@@ -247,6 +364,7 @@ export async function createMarket(
   const deps: CreateMarketDependencies = {
     createTopic,
     submitMessage,
+    transferHbar,
     now: () => new Date(),
     ...options.deps
   };
@@ -257,6 +375,10 @@ export async function createMarket(
   const initialOddsByOutcome = normalizeInitialOddsByOutcome(input.initialOddsByOutcome, outcomes);
   const liquidityModel = resolveLiquidityModel(input);
   const curveLiquidityHbar = normalizeCurveLiquidityHbar(input.curveLiquidityHbar, liquidityModel);
+
+  const validatedFunding = validateFunding(input.initialFundingHbar, liquidityModel, curveLiquidityHbar);
+  validateSeedOrders(input.seedOrders, outcomes, liquidityModel);
+
   const currentOddsByOutcome = initialOddsByOutcome ?? fallbackOdds(outcomes);
   const curveState =
     isLowLiquidityModel(liquidityModel) && curveLiquidityHbar
@@ -267,6 +389,13 @@ export async function createMarket(
   const resolvedEscrow = input.escrowAccountId ?? input.creatorAccountId;
 
   try {
+    const fundingTransfer = await deps.transferHbar(
+      input.creatorAccountId,
+      resolvedEscrow,
+      validatedFunding,
+      { client: options.client }
+    );
+
     const topic = await deps.createTopic(`MARKET:${input.question}`, undefined, {
       client: options.client
     });
@@ -295,10 +424,56 @@ export async function createMarket(
       curveState,
       syntheticOutcomeIds,
       challenges: [],
-      oracleVotes: []
+      oracleVotes: [],
+      initialFundingHbar: validatedFunding,
+      fundingTransactionId: fundingTransfer.transactionId,
+      fundingTransactionUrl: fundingTransfer.transactionUrl,
+      markPriceSource: "INITIAL"
     };
 
     store.markets.set(market.id, market);
+
+    // Place seed orders for CLOB markets
+    if (!isLowLiquidityModel(liquidityModel) && input.seedOrders && input.seedOrders.length > 0) {
+      const seedOrderRecords: MarketOrder[] = input.seedOrders.map((seed) => ({
+        id: randomUUID(),
+        marketId: market.id,
+        accountId: input.creatorAccountId,
+        outcome: seed.outcome.trim().toUpperCase(),
+        side: seed.side,
+        quantity: seed.quantity,
+        price: seed.price,
+        createdAt: nowIso,
+        status: "OPEN" as const
+      }));
+      store.orders.set(market.id, seedOrderRecords);
+
+      const clobOdds = computeInitialClobOdds(seedOrderRecords, outcomes);
+      if (clobOdds) {
+        market.currentOddsByOutcome = clobOdds;
+        market.markPriceSource = "CLOB_MID";
+      }
+
+      for (const order of seedOrderRecords) {
+        await deps.submitMessage(
+          topic.topicId,
+          {
+            type: "ORDER_PLACED",
+            marketId: market.id,
+            orderId: order.id,
+            accountId: order.accountId,
+            outcome: order.outcome,
+            side: order.side,
+            quantity: order.quantity,
+            price: order.price,
+            createdAt: order.createdAt,
+            isSeedOrder: true
+          },
+          { client: options.client }
+        );
+      }
+    }
+
     persistMarketStore(store);
 
     await deps.submitMessage(
@@ -313,7 +488,10 @@ export async function createMarket(
         currentOddsByOutcome: market.currentOddsByOutcome,
         closeTime: market.closeTime,
         creatorAccountId: market.creatorAccountId,
-        createdAt: market.createdAt
+        createdAt: market.createdAt,
+        initialFundingHbar: validatedFunding,
+        fundingTransactionId: fundingTransfer.transactionId,
+        seedOrderCount: input.seedOrders?.length ?? 0
       },
       { client: options.client }
     );

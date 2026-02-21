@@ -90,6 +90,13 @@ function ucpError(
 
 // ── Validation schemas ──
 
+const seedOrderSchema = z.object({
+  outcome: z.string().min(1),
+  side: z.enum(["BID", "ASK"]),
+  quantity: z.number().positive(),
+  price: z.number().positive().max(1)
+});
+
 const createMarketSchema = z.object({
   question: z.string().min(1),
   description: z.string().optional(),
@@ -99,7 +106,9 @@ const createMarketSchema = z.object({
   outcomes: z.array(z.string().min(1)).optional(),
   initialOddsByOutcome: z.record(z.number().positive()).optional(),
   liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE", "HIGH_LIQUIDITY", "LOW_LIQUIDITY"]).optional(),
-  curveLiquidityHbar: z.number().positive().optional()
+  curveLiquidityHbar: z.number().positive().optional(),
+  initialFundingHbar: z.number().positive(),
+  seedOrders: z.array(seedOrderSchema).optional()
 });
 
 const placeBetSchema = z.object({
@@ -258,7 +267,9 @@ export function createUcpCapabilityRouter(
           outcomes: request.body.outcomes,
           initialOddsByOutcome: request.body.initialOddsByOutcome,
           liquidityModel: request.body.liquidityModel,
-          curveLiquidityHbar: request.body.curveLiquidityHbar
+          curveLiquidityHbar: request.body.curveLiquidityHbar,
+          initialFundingHbar: request.body.initialFundingHbar,
+          seedOrders: request.body.seedOrders
         });
 
         options.eventBus.publish("market.created", {

@@ -53,7 +53,8 @@ export {
   type AutonomyChallengeInput,
   type AutonomyEngine,
   type AutonomyEngineOptions,
-  type AutonomyStatus
+  type AutonomyStatus,
+  type ServiceFulfillmentProvider
 } from "./autonomy/engine.js";
 
 export {

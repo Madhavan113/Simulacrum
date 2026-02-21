@@ -32,6 +32,13 @@ import {
   calculateReputationScore,
   getReputationStore
 } from "@simulacrum/reputation";
+import {
+  acceptRequest,
+  completeRequest,
+  getServiceStore,
+  requestService,
+  type Service
+} from "@simulacrum/services";
 
 import type { ApiEventBus } from "../events.js";
 import type { AgentRegistry } from "../routes/agents.js";
@@ -40,6 +47,15 @@ import {
   type PersistedWallet,
   type WalletPersistenceStore
 } from "../wallet-persistence.js";
+
+export interface ServiceFulfillmentProvider {
+  fulfillServiceRequest(
+    providerAccountId: string,
+    serviceName: string,
+    serviceDescription: string,
+    userInput: string
+  ): Promise<string>;
+}
 
 type HederaClient = ReturnType<typeof createHederaClient>;
 
@@ -51,6 +67,8 @@ export interface AutonomyEngineOptions {
   agentCount?: number;
   initialAgentBalanceHbar?: number;
   challengeEveryTicks?: number;
+  serviceEveryTicks?: number;
+  serviceBuyChance?: number;
   minOpenMarkets?: number;
   marketCloseMinutes?: number;
   minBetHbar?: number;
@@ -133,10 +151,14 @@ export class AutonomyEngine {
   readonly #targetAgents: number;
   readonly #initialAgentBalanceHbar: number;
   readonly #challengeEveryTicks: number;
+  readonly #serviceEveryTicks: number;
+  readonly #serviceBuyChance: number;
   readonly #minOpenMarkets: number;
   readonly #marketCloseMinutes: number;
   readonly #minBetHbar: number;
   readonly #maxBetHbar: number;
+
+  #fulfillmentProvider: ServiceFulfillmentProvider | null = null;
 
   readonly #network: HederaNetwork;
   readonly #operatorAccountId: string;
@@ -167,6 +189,8 @@ export class AutonomyEngine {
     this.#targetAgents = options.agentCount ?? 3;
     this.#initialAgentBalanceHbar = options.initialAgentBalanceHbar ?? 25;
     this.#challengeEveryTicks = options.challengeEveryTicks ?? 3;
+    this.#serviceEveryTicks = options.serviceEveryTicks ?? 2;
+    this.#serviceBuyChance = options.serviceBuyChance ?? 0.25;
     this.#minOpenMarkets = options.minOpenMarkets ?? 2;
     this.#marketCloseMinutes = options.marketCloseMinutes ?? 30;
     this.#minBetHbar = options.minBetHbar ?? 1;
@@ -186,6 +210,10 @@ export class AutonomyEngine {
         "Autonomy engine requires HEDERA_ACCOUNT_ID and HEDERA_PRIVATE_KEY in environment."
       );
     }
+  }
+
+  setFulfillmentProvider(provider: ServiceFulfillmentProvider): void {
+    this.#fulfillmentProvider = provider;
   }
 
   getStatus(): AutonomyStatus {
@@ -283,6 +311,7 @@ export class AutonomyEngine {
       }
 
       await this.runAgentBetting(now);
+      await this.runServiceConsumption();
       await this.voteOnDisputedMarkets();
       await this.resolveExpiredMarkets(now);
       await this.settleResolvedMarkets();
@@ -338,6 +367,13 @@ export class AutonomyEngine {
 
     const escrowAccountId = this.#escrowWallet?.accountId ?? challenger.wallet.accountId;
     const client = this.getClient(challenger.wallet);
+    const resolvedOutcomes = input.outcomes && input.outcomes.length > 1 ? input.outcomes : ["YES", "NO"];
+    const defaultFunding = 25;
+    const seedOrders = resolvedOutcomes.flatMap((outcome) => [
+      { outcome, side: "BID" as const, quantity: 5, price: 0.4 },
+      { outcome, side: "ASK" as const, quantity: 5, price: 0.6 }
+    ]);
+
     const created = await createMarket(
       {
         question,
@@ -347,7 +383,9 @@ export class AutonomyEngine {
         creatorAccountId: challenger.wallet.accountId,
         escrowAccountId,
         closeTime,
-        outcomes: input.outcomes && input.outcomes.length > 1 ? input.outcomes : ["YES", "NO"]
+        outcomes: resolvedOutcomes,
+        initialFundingHbar: defaultFunding,
+        seedOrders
       },
       { client }
     );
@@ -620,9 +658,16 @@ export class AutonomyEngine {
 
   private async voteOnDisputedMarkets(): Promise<void> {
     const store = getMarketStore();
-    const disputed = Array.from(store.markets.values()).filter(
-      (market) => market.status === "DISPUTED" && market.selfAttestation
-    );
+    const now = Date.now();
+    const disputed = Array.from(store.markets.values()).filter((market) => {
+      if (market.status !== "DISPUTED" || !market.selfAttestation) {
+        return false;
+      }
+      const windowEndMs = market.challengeWindowEndsAt
+        ? Date.parse(market.challengeWindowEndsAt)
+        : 0;
+      return !Number.isFinite(windowEndMs) || now >= windowEndMs;
+    });
 
     if (disputed.length === 0) {
       return;
@@ -649,7 +694,6 @@ export class AutonomyEngine {
           continue;
         }
 
-        // Use the agent's strategy to pick an outcome
         const snapshot = toMarketSnapshot(market);
         const decision = await runtime.agent.decideBet(snapshot, {
           now: new Date(),
@@ -887,6 +931,145 @@ export class AutonomyEngine {
     this.#eventBus.publish("autonomy.escrow.created", {
       accountId: this.#escrowWallet.accountId
     });
+  }
+
+  private async runServiceConsumption(): Promise<void> {
+    if (this.#tickCount % this.#serviceEveryTicks !== 0) {
+      return;
+    }
+
+    const store = getServiceStore();
+    const activeServices = Array.from(store.services.values()).filter(
+      (svc) => svc.status === "ACTIVE"
+    );
+
+    if (activeServices.length === 0) {
+      return;
+    }
+
+    for (const runtime of this.#runtimeAgents.values()) {
+      const affordable = activeServices.filter(
+        (svc) =>
+          svc.priceHbar <= runtime.agent.bankrollHbar * 0.3 &&
+          svc.providerAccountId !== runtime.wallet.accountId
+      );
+
+      if (affordable.length === 0) {
+        continue;
+      }
+
+      if (Math.random() > this.#serviceBuyChance) {
+        continue;
+      }
+
+      const service = affordable[Math.floor(Math.random() * affordable.length)]!;
+      const input = this.generateServiceInput(service);
+
+      try {
+        const svcRequest = await requestService(
+          {
+            serviceId: service.id,
+            requesterAccountId: runtime.wallet.accountId,
+            input
+          },
+          { client: this.getClient(runtime.wallet) }
+        );
+
+        runtime.agent.adjustBankroll(-service.priceHbar);
+
+        await acceptRequest({
+          serviceId: service.id,
+          requestId: svcRequest.id,
+          providerAccountId: service.providerAccountId
+        });
+
+        if (this.#fulfillmentProvider) {
+          try {
+            const output = await this.#fulfillmentProvider.fulfillServiceRequest(
+              service.providerAccountId,
+              service.name,
+              service.description,
+              input
+            );
+
+            await completeRequest({
+              serviceId: service.id,
+              requestId: svcRequest.id,
+              providerAccountId: service.providerAccountId,
+              output
+            });
+
+            this.#eventBus.publish("autonomy.service.completed", {
+              agentId: runtime.agent.id,
+              accountId: runtime.wallet.accountId,
+              serviceId: service.id,
+              serviceName: service.name,
+              priceHbar: service.priceHbar,
+              requestId: svcRequest.id
+            });
+          } catch {
+            this.#eventBus.publish("autonomy.service.fulfillment_error", {
+              agentId: runtime.agent.id,
+              serviceId: service.id,
+              requestId: svcRequest.id
+            });
+          }
+        } else {
+          this.#eventBus.publish("autonomy.service.requested", {
+            agentId: runtime.agent.id,
+            accountId: runtime.wallet.accountId,
+            serviceId: service.id,
+            serviceName: service.name,
+            priceHbar: service.priceHbar,
+            requestId: svcRequest.id
+          });
+        }
+      } catch (error) {
+        this.#eventBus.publish("autonomy.service.error", {
+          agentId: runtime.agent.id,
+          serviceId: service.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+  }
+
+  private generateServiceInput(service: Service): string {
+    const inputs: Record<string, string[]> = {
+      ORACLE: [
+        "What is the current market sentiment for the top prediction markets?",
+        "Provide a data-driven forecast on the most active market topic.",
+        "What are the key on-chain signals agents should watch right now?"
+      ],
+      DATA: [
+        "Provide the latest activity metrics for prediction markets on Hedera.",
+        "Summarize recent agent trading volume and market participation.",
+        "What tokens or markets are seeing unusual volume today?"
+      ],
+      RESEARCH: [
+        "Analyze the risk factors in the current prediction market landscape.",
+        "Research which market categories have the highest return potential.",
+        "What emerging trends should agents be positioning for?"
+      ],
+      ANALYSIS: [
+        "Provide a technical analysis of recent prediction market odds movements.",
+        "Analyze the correlation between agent reputation scores and bet accuracy.",
+        "Which markets show the most mispriced odds right now?"
+      ],
+      COMPUTE: [
+        "Run a backtesting simulation on a contrarian betting strategy.",
+        "Calculate optimal bet sizing for a bankroll management strategy.",
+        "Optimize portfolio allocation across the active prediction markets."
+      ],
+      CUSTOM: [
+        "Provide your best actionable insight for an autonomous trading agent.",
+        "What should I prioritize in the current market environment?",
+        "Give me your top recommendation based on current conditions."
+      ]
+    };
+
+    const options = inputs[service.category] ?? inputs.CUSTOM!;
+    return options[Math.floor(Math.random() * options.length)]!;
   }
 
   private async reclaimHbar(): Promise<void> {

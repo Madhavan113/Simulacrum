@@ -255,6 +255,9 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
     registry,
     ...options.clawdbots
   });
+
+  autonomyEngine.setFulfillmentProvider(clawdbotNetwork);
+
   const envResearchTickMs = Number(process.env.RESEARCH_TICK_MS);
   const envResearchAgentCount = Number(process.env.RESEARCH_AGENT_COUNT);
   const envResearchPubInterval = Number(process.env.RESEARCH_PUBLICATION_INTERVAL_TICKS);

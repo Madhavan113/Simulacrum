@@ -166,10 +166,25 @@ function invalidateFromEvent(queryClient: QueryClient, event: WsEvent) {
       void queryClient.invalidateQueries({ queryKey: ['research', 'observations'] })
       break
 
+    // Derivatives: options mark-to-market and funding events
+    case 'derivatives.options_refreshed':
+    case 'derivatives.options_expired':
+    case 'derivatives.option.written':
+    case 'derivatives.option.bought':
+      void queryClient.invalidateQueries({ queryKey: ['derivatives', 'options'] })
+      void queryClient.invalidateQueries({ queryKey: ['derivatives', 'overview'] })
+      break
+    case 'derivatives.funding_settled':
+      void queryClient.invalidateQueries({ queryKey: ['derivatives'] })
+      break
+
     default:
       // Wildcard: any autonomy.market.* or clawdbot.market.* → invalidate markets
       if (type.startsWith('autonomy.market') || type.startsWith('clawdbot.market')) {
         invalidateMarket()
+      }
+      if (type.startsWith('derivatives.')) {
+        void queryClient.invalidateQueries({ queryKey: ['derivatives'] })
       }
       break
   }

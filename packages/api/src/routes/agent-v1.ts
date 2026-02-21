@@ -49,6 +49,13 @@ const verifySchema = z.object({
   signature: z.string().min(1)
 });
 
+const seedOrderSchema = z.object({
+  outcome: z.string().min(1),
+  side: z.enum(["BID", "ASK"]),
+  quantity: z.number().positive(),
+  price: z.number().positive().max(1)
+});
+
 const createMarketSchema = z.object({
   question: z.string().min(1),
   description: z.string().optional(),
@@ -57,7 +64,9 @@ const createMarketSchema = z.object({
   initialOddsByOutcome: z.record(z.number().positive()).optional(),
   lowLiquidity: z.boolean().optional(),
   liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE", "HIGH_LIQUIDITY", "LOW_LIQUIDITY"]).optional(),
-  curveLiquidityHbar: z.number().positive().optional()
+  curveLiquidityHbar: z.number().positive().optional(),
+  initialFundingHbar: z.number().positive(),
+  seedOrders: z.array(seedOrderSchema).optional()
 });
 
 const placeBetSchema = z.object({
@@ -321,7 +330,9 @@ export function createAgentV1Router(options: CreateAgentV1RouterOptions): Router
           initialOddsByOutcome: request.body.initialOddsByOutcome,
           lowLiquidity: request.body.lowLiquidity,
           liquidityModel: request.body.liquidityModel,
-          curveLiquidityHbar: request.body.curveLiquidityHbar
+          curveLiquidityHbar: request.body.curveLiquidityHbar,
+          initialFundingHbar: request.body.initialFundingHbar,
+          seedOrders: request.body.seedOrders
         },
         { client: options.authService.getClientForAgent(context.agentId) }
       );

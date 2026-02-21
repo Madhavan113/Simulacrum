@@ -9,11 +9,31 @@ interface OptionCardProps {
   agentNames?: Record<string, string>
 }
 
+function formatPnl(value: number): string {
+  const sign = value >= 0 ? '+' : ''
+  return `${sign}${value.toFixed(2)} HBAR`
+}
+
+function pnlColor(value: number): string {
+  if (value > 0) return 'var(--success)'
+  if (value < 0) return 'var(--danger)'
+  return 'var(--text-muted)'
+}
+
+function formatTimeRemaining(days: number | undefined): string {
+  if (days === undefined) return '—'
+  if (days < 1 / 24) return `${Math.max(1, Math.round(days * 24 * 60))}m`
+  if (days < 1) return `${Math.round(days * 24)}h`
+  return `${days.toFixed(1)}d`
+}
+
 export function OptionCard({ option, marketQuestion, agentNames }: OptionCardProps) {
   const [expanded, setExpanded] = useState(false)
   const isCall = option.optionType === 'CALL'
   const writerName = agentNames?.[option.writerAccountId]
   const holderName = option.holderAccountId ? agentNames?.[option.holderAccountId] : undefined
+  const hasMtM = option.currentPremiumHbar !== undefined
+  const isSold = Boolean(option.holderAccountId)
 
   return (
     <Card>
@@ -26,7 +46,11 @@ export function OptionCard({ option, marketQuestion, agentNames }: OptionCardPro
             <StatusBadge status={option.optionType} />
             <StatusBadge status={option.status} />
           </div>
-          <span className="label" style={{ fontSize: 10 }}>{option.style}</span>
+          {hasMtM && (
+            <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+              {formatTimeRemaining(option.timeToExpiryDays)} left
+            </span>
+          )}
         </div>
 
         <div className="mb-3">
@@ -57,11 +81,29 @@ export function OptionCard({ option, marketQuestion, agentNames }: OptionCardPro
             </span>
           </div>
           <div>
-            <span className="label" style={{ display: 'block', fontSize: 10, marginBottom: 2 }}>Premium</span>
+            <span className="label" style={{ display: 'block', fontSize: 10, marginBottom: 2 }}>
+              {hasMtM ? 'Premium (paid)' : 'Premium'}
+            </span>
             <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
               {option.premiumHbar.toFixed(2)} HBAR
             </span>
           </div>
+          {hasMtM && (
+            <div>
+              <span className="label" style={{ display: 'block', fontSize: 10, marginBottom: 2 }}>Mark Value</span>
+              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--accent)' }}>
+                {option.currentPremiumHbar!.toFixed(2)} HBAR
+              </span>
+            </div>
+          )}
+          {hasMtM && option.currentMarkPrice !== undefined && (
+            <div>
+              <span className="label" style={{ display: 'block', fontSize: 10, marginBottom: 2 }}>Underlying</span>
+              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
+                {(option.currentMarkPrice * 100).toFixed(1)}%
+              </span>
+            </div>
+          )}
           <div>
             <span className="label" style={{ display: 'block', fontSize: 10, marginBottom: 2 }}>Size</span>
             <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
@@ -75,6 +117,26 @@ export function OptionCard({ option, marketQuestion, agentNames }: OptionCardPro
             </span>
           </div>
         </div>
+
+        {hasMtM && isSold && (
+          <div
+            style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 8 }}
+            className="grid grid-cols-2 gap-3"
+          >
+            <div>
+              <span className="label" style={{ display: 'block', fontSize: 10, marginBottom: 2 }}>Holder PnL</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: pnlColor(option.holderPnlHbar ?? 0) }}>
+                {formatPnl(option.holderPnlHbar ?? 0)}
+              </span>
+            </div>
+            <div>
+              <span className="label" style={{ display: 'block', fontSize: 10, marginBottom: 2 }}>Writer PnL</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: pnlColor(option.writerPnlHbar ?? 0) }}>
+                {formatPnl(option.writerPnlHbar ?? 0)}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div style={{ borderTop: '1px solid var(--border)', marginTop: 12, paddingTop: 8 }} className="flex justify-between">
           <div>
@@ -101,6 +163,7 @@ export function OptionCard({ option, marketQuestion, agentNames }: OptionCardPro
           <Detail label="Created">{new Date(option.createdAt).toLocaleString()}</Detail>
           {option.exercisedAt && <Detail label="Exercised">{new Date(option.exercisedAt).toLocaleString()}</Detail>}
           {option.settlementHbar !== undefined && <Detail label="Settlement">{option.settlementHbar.toFixed(2)} HBAR</Detail>}
+          {option.lastRefreshedAt && <Detail label="Last MtM">{new Date(option.lastRefreshedAt).toLocaleString()}</Detail>}
           <div className="col-span-2">
             <span className="label" style={{ fontSize: 10 }}>Writer Account</span>
             <span style={{ display: 'block', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-dim)' }}>

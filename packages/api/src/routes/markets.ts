@@ -29,6 +29,13 @@ import {
   type OracleVoteLog
 } from "./market-helpers.js";
 
+const seedOrderSchema = z.object({
+  outcome: z.string().min(1),
+  side: z.enum(["BID", "ASK"]),
+  quantity: z.number().positive(),
+  price: z.number().positive().max(1)
+});
+
 const createMarketSchema = z.object({
   question: z.string().min(1),
   description: z.string().optional(),
@@ -39,7 +46,9 @@ const createMarketSchema = z.object({
   initialOddsByOutcome: z.record(z.number().positive()).optional(),
   lowLiquidity: z.boolean().optional(),
   liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE", "HIGH_LIQUIDITY", "LOW_LIQUIDITY"]).optional(),
-  curveLiquidityHbar: z.number().positive().optional()
+  curveLiquidityHbar: z.number().positive().optional(),
+  initialFundingHbar: z.number().positive(),
+  seedOrders: z.array(seedOrderSchema).optional()
 });
 
 const placeBetSchema = z.object({

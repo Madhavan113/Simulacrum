@@ -1636,6 +1636,27 @@ export class ClawdbotNetwork {
       return;
     }
 
+    if (event.type === "market.self_attested" || event.type === "clawdbot.market.self_attested") {
+      const payload =
+        event.payload && typeof event.payload === "object"
+          ? (event.payload as { marketId?: unknown; proposedOutcome?: unknown; demo?: unknown; source?: unknown })
+          : null;
+      if (payload?.demo === true || payload?.source === "demo-script") {
+        return;
+      }
+      const marketId = parseNonEmptyString(payload?.marketId, "");
+      if (!marketId) {
+        return;
+      }
+      const proposedOutcome = parseNonEmptyString(payload?.proposedOutcome, "");
+      void this.broadcastDisputeVotes(
+        marketId,
+        proposedOutcome || undefined,
+        event.type as "market.self_attested" | "clawdbot.market.self_attested"
+      );
+      return;
+    }
+
     if (event.type === "market.challenged") {
       const payload =
         event.payload && typeof event.payload === "object"
@@ -1729,7 +1750,7 @@ export class ClawdbotNetwork {
   private async broadcastDisputeVotes(
     marketId: string,
     preferredOutcome: string | undefined,
-    source: "market.challenged" | "clawdbot.market.challenged"
+    source: "market.challenged" | "clawdbot.market.challenged" | "market.self_attested" | "clawdbot.market.self_attested"
   ): Promise<void> {
     if (!this.#running || this.#activeDisputeBroadcasts.has(marketId)) {
       return;
@@ -1743,6 +1764,25 @@ export class ClawdbotNetwork {
       const market = store.markets.get(marketId);
 
       if (!market || market.status === "RESOLVED" || !market.selfAttestation) {
+        return;
+      }
+
+      const challengeWindowEndMs = market.challengeWindowEndsAt
+        ? Date.parse(market.challengeWindowEndsAt)
+        : 0;
+      if (Number.isFinite(challengeWindowEndMs)) {
+        const waitMs = challengeWindowEndMs - Date.now() + 500;
+        if (waitMs > 0 && waitMs < 20 * 60 * 1000) {
+          await this.pause(waitMs);
+        }
+      }
+
+      if (!this.#running) {
+        return;
+      }
+
+      const refreshed = getMarketStore().markets.get(marketId);
+      if (!refreshed || refreshed.status === "RESOLVED" || !refreshed.selfAttestation) {
         return;
       }
 
@@ -2300,6 +2340,15 @@ export class ClawdbotNetwork {
         const closeTime = new Date(Date.now() + closeMinutes * 60 * 1000).toISOString();
 
         const escrowAccountId = this.#escrowWallet?.accountId ?? wallet.accountId;
+        const resolvedCurveLiquidity = curveLiquidityHbar ?? 25;
+        const initialFundingHbar = lowLiquidity ? resolvedCurveLiquidity : 25;
+        const seedOrders = lowLiquidity
+          ? undefined
+          : (resolvedOutcomes).flatMap((outcome: string) => [
+              { outcome, side: "BID" as const, quantity: 5, price: 0.4 },
+              { outcome, side: "ASK" as const, quantity: 5, price: 0.6 }
+            ]);
+
         const created = await createMarket(
           {
             question,
@@ -2311,7 +2360,9 @@ export class ClawdbotNetwork {
             initialOddsByOutcome,
             lowLiquidity,
             liquidityModel,
-            curveLiquidityHbar
+            curveLiquidityHbar,
+            initialFundingHbar,
+            seedOrders
           },
           { client: this.getClient(wallet) }
         );
@@ -3645,27 +3696,47 @@ export class ClawdbotNetwork {
           continue;
         }
 
+        const challengeWindowEndMs = market.challengeWindowEndsAt
+          ? Date.parse(market.challengeWindowEndsAt)
+          : 0;
+        if (Number.isFinite(challengeWindowEndMs) && now.getTime() < challengeWindowEndMs) {
+          continue;
+        }
+
+        const alreadyVotedAccounts = new Set(
+          (market.oracleVotes ?? []).map((v) => (v as { voterAccountId: string }).voterAccountId.trim())
+        );
         const trustedVoters = this.getTrustedResolverRuntimes(reputationByAccount);
         const voterPool = (trustedVoters.length > 0 ? trustedVoters : [resolver]).filter(
-          (runtime) => !this.isIneligibleOracleVoter(market, runtime.wallet.accountId)
+          (runtime) =>
+            !this.isIneligibleOracleVoter(market, runtime.wallet.accountId) &&
+            !alreadyVotedAccounts.has(runtime.wallet.accountId.trim())
         );
         if (voterPool.length === 0) {
-          this.#eventBus.publish("clawdbot.market.resolve_error", {
-            marketId: market.id,
-            error: "No eligible oracle voters available after excluding creator/challengers."
-          });
+          if (alreadyVotedAccounts.size === 0) {
+            this.#eventBus.publish("clawdbot.market.resolve_error", {
+              marketId: market.id,
+              error: "No eligible oracle voters available after excluding creator/challengers."
+            });
+          }
           continue;
         }
         const maxVotes = Math.max(
           this.#oracleMinVoters,
           2,
-          Math.ceil(voterPool.length * this.#oracleQuorumPercent)
+          Math.ceil((voterPool.length + alreadyVotedAccounts.size) * this.#oracleQuorumPercent)
         );
+        const votesToSubmit = Math.max(0, maxVotes - alreadyVotedAccounts.size);
 
-        for (const voter of voterPool.slice(0, maxVotes)) {
+        for (const voter of voterPool.slice(0, votesToSubmit)) {
           const storeSnapshot = getMarketStore();
+          const currentMarket = storeSnapshot.markets.get(market.id);
+          if (!currentMarket || currentMarket.status === "RESOLVED") {
+            break;
+          }
+
           const priorVotes = [
-            ...((storeSnapshot.markets.get(market.id)?.oracleVotes ?? []) as Array<{
+            ...((currentMarket.oracleVotes ?? []) as Array<{
               id: string;
               voterAccountId: string;
               outcome: string;
@@ -3683,23 +3754,42 @@ export class ClawdbotNetwork {
             Object.entries(ownTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ??
             market.selfAttestation?.proposedOutcome ??
             resolvedOutcome;
-          const voteResult = await submitOracleVote(
-            {
-              marketId: market.id,
-              voterAccountId: voter.wallet.accountId,
-              outcome: voteOutcome,
-              confidence: Math.max(0.3, confidence),
-              reason: "Reputation-weighted peer oracle vote",
-              reputationScore: reputationByAccount[voter.wallet.accountId] ?? voter.agent.reputationScore
-            },
-            {
-              client: this.getClient(voter.wallet),
-              oracleMinVotes: this.#oracleMinVoters,
-              oracleEligibleVoterCount: voterPool.length,
-              oracleQuorumPercent: this.#oracleQuorumPercent,
-              reputationLookup: (accountId) => reputationByAccount[accountId] ?? 0
+
+          let voteResult: Awaited<ReturnType<typeof submitOracleVote>>;
+          try {
+            voteResult = await submitOracleVote(
+              {
+                marketId: market.id,
+                voterAccountId: voter.wallet.accountId,
+                outcome: voteOutcome,
+                confidence: Math.max(0.3, confidence),
+                reason: "Reputation-weighted peer oracle vote",
+                reputationScore: reputationByAccount[voter.wallet.accountId] ?? voter.agent.reputationScore
+              },
+              {
+                client: this.getClient(voter.wallet),
+                oracleMinVotes: this.#oracleMinVoters,
+                oracleEligibleVoterCount: voterPool.length + alreadyVotedAccounts.size,
+                oracleQuorumPercent: this.#oracleQuorumPercent,
+                reputationLookup: (accountId) => reputationByAccount[accountId] ?? 0
+              }
+            );
+          } catch (voteError) {
+            const message = voteError instanceof Error ? voteError.message : String(voteError);
+            if (/already submitted an oracle vote/i.test(message) || /ineligible/i.test(message)) {
+              continue;
             }
-          );
+            if (/already resolved/i.test(message)) {
+              break;
+            }
+            this.#eventBus.publish("clawdbot.market.oracle_vote_error", {
+              marketId: market.id,
+              botId: voter.agent.id,
+              source: "resolve-expired",
+              error: message
+            });
+            continue;
+          }
 
           this.#eventBus.publish("clawdbot.market.oracle_vote", {
             marketId: market.id,

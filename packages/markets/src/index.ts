@@ -46,6 +46,7 @@ export {
   type MarketChallenge,
   type MarketCurveState,
   type MarketLiquidityModel,
+  type MarkPriceSource,
   type MarketResolution,
   type OrderFill,
   type MarketStatus,
@@ -55,6 +56,7 @@ export {
   type PlaceBetInput,
   type PublishOrderInput,
   type ResolveMarketInput,
+  type SeedOrder,
   type SelfAttestMarketInput,
   type ChallengeMarketInput
 } from "./types.js";
