@@ -18,6 +18,7 @@ export interface MoltbookAgentKey {
 }
 
 const agentKeys = new Map<string, string>();
+let defaultApiKey: string | null = null;
 
 /**
  * Register a Moltbook API key for a service agent.
@@ -30,15 +31,27 @@ export function registerMoltbookAgent(providerAccountId: string, apiKey: string)
 /**
  * Bulk-register from env vars.
  * Expects comma-separated pairs: `accountId:apiKey,accountId:apiKey,...`
+ *
+ * Also reads MOLTBOOK_API_KEY as a global default so dynamically-created
+ * bot accounts that don't have their own key still post through a shared
+ * Moltbook identity.
  */
 export function registerMoltbookAgentsFromEnv(): void {
-  const raw = process.env.MOLTBOOK_AGENT_KEYS;
-  if (!raw) return;
+  // Global default key — used when a bot has no per-account key
+  defaultApiKey = process.env.MOLTBOOK_API_KEY ?? null;
 
-  for (const pair of raw.split(",")) {
-    const [accountId, apiKey] = pair.trim().split(":");
-    if (accountId && apiKey) {
-      registerMoltbookAgent(accountId.trim(), apiKey.trim());
+  const raw = process.env.MOLTBOOK_AGENT_KEYS;
+  if (raw) {
+    for (const pair of raw.split(",")) {
+      const sep = pair.indexOf(":");
+      if (sep === -1) continue;
+      const accountId = pair.slice(0, sep).trim();
+      const apiKey = pair.slice(sep + 1).trim();
+      if (accountId && apiKey) {
+        registerMoltbookAgent(accountId, apiKey);
+        // Use the first key we see as the default if no explicit default
+        if (!defaultApiKey) defaultApiKey = apiKey;
+      }
     }
   }
 
@@ -51,10 +64,15 @@ export function registerMoltbookAgentsFromEnv(): void {
       registerMoltbookAgent(accountId, apiKey);
     }
   }
+
+  const keyCount = agentKeys.size + (defaultApiKey ? 1 : 0);
+  if (keyCount > 0) {
+    console.log(`[moltbook] Loaded ${agentKeys.size} agent key(s)${defaultApiKey ? " + default key" : ""}`);
+  }
 }
 
 function getClientForProvider(providerAccountId: string): MoltbookClient | null {
-  const apiKey = agentKeys.get(providerAccountId);
+  const apiKey = agentKeys.get(providerAccountId) ?? defaultApiKey;
   if (!apiKey) return null;
   return new MoltbookClient({
     apiKey,
