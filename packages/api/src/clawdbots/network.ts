@@ -2460,6 +2460,30 @@ export class ClawdbotNetwork {
     return map;
   }
 
+  private persistReputationChange(
+    runtime: RuntimeBot,
+    scoreDelta: number,
+    reason: string
+  ): void {
+    runtime.agent.adjustReputation(scoreDelta);
+
+    submitAttestation(
+      {
+        subjectAccountId: runtime.wallet.accountId,
+        attesterAccountId: this.#operatorAccountId,
+        scoreDelta,
+        confidence: 0.7,
+        reason,
+        tags: ["action"]
+      },
+      { client: this.getOperatorClient() }
+    ).catch((err) => {
+      console.warn(
+        `[clawdbot] Attestation write failed for ${runtime.agent.name}: ${err instanceof Error ? err.message : err}`
+      );
+    });
+  }
+
   private buildMarketSentiment(): Record<string, MarketSentiment> {
     const sentiment: Record<string, MarketSentiment> = {};
     const store = getMarketStore();
@@ -2829,6 +2853,7 @@ export class ClawdbotNetwork {
           initialOddsByOutcome: action.initialOddsByOutcome,
           closeMinutes: this.#marketCloseMinutes
         });
+        this.persistReputationChange(runtime, 6, `Created market: ${action.prompt?.slice(0, 80) ?? "new market"}`);
         return;
       }
       case "PUBLISH_ORDER": {
@@ -2877,7 +2902,7 @@ export class ClawdbotNetwork {
               }
             });
             runtime.agent.adjustBankroll(-bootstrapStake);
-            runtime.agent.adjustReputation(0.75);
+            this.persistReputationChange(runtime, 5, "Bootstrap stake paired with orderbook liquidity");
             this.#eventBus.publish("clawdbot.bet.placed", {
               botId: runtime.agent.id,
               marketId,
@@ -2951,7 +2976,7 @@ export class ClawdbotNetwork {
         });
         runtime.agent.adjustBankroll(-amountHbar);
         if (!hadStakeBefore) {
-          runtime.agent.adjustReputation(0.75);
+          this.persistReputationChange(runtime, 5, `Bet on market ${market.id}`);
         }
         this.#eventBus.publish("clawdbot.bet.placed", {
           botId: runtime.agent.id,
@@ -3005,7 +3030,7 @@ export class ClawdbotNetwork {
             botId: runtime.agent.id,
             rationale: action.rationale
           });
-          runtime.agent.adjustReputation(1);
+          this.persistReputationChange(runtime, 8, `Registered service: ${action.serviceName}`);
         } catch (error) {
           this.#eventBus.publish("clawdbot.action.error", {
             botId: runtime.agent.id,
@@ -3081,7 +3106,7 @@ export class ClawdbotNetwork {
             botId: runtime.agent.id,
             rationale: action.rationale
           });
-          runtime.agent.adjustReputation(0.5);
+          this.persistReputationChange(runtime, 4, `Created task: ${title}`);
         } catch (error) {
           this.#eventBus.publish("clawdbot.action.error", {
             botId: runtime.agent.id,
@@ -3117,6 +3142,7 @@ export class ClawdbotNetwork {
             botId: runtime.agent.id,
             rationale: action.rationale
           });
+          this.persistReputationChange(runtime, 4, `Bid on task ${taskId}`);
         } catch (error) {
           this.#eventBus.publish("clawdbot.action.error", {
             botId: runtime.agent.id,
@@ -3167,7 +3193,7 @@ export class ClawdbotNetwork {
             premiumHbar,
             rationale: action.rationale
           });
-          runtime.agent.adjustReputation(1);
+          this.persistReputationChange(runtime, 8, `Wrote ${optionType} option on market ${marketId}`);
         } catch (error) {
           this.#eventBus.publish("clawdbot.action.error", {
             botId: runtime.agent.id,
@@ -3260,7 +3286,7 @@ export class ClawdbotNetwork {
             entryPrice: position.entryPrice,
             rationale: action.rationale
           });
-          runtime.agent.adjustReputation(0.5);
+          this.persistReputationChange(runtime, 5, `Opened ${side} position on market ${marketId}`);
         } catch (error) {
           this.#eventBus.publish("clawdbot.action.error", {
             botId: runtime.agent.id,

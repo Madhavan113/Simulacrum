@@ -4,9 +4,11 @@ import { PnLCell } from './PnLCell'
 
 interface PositionRowProps {
   position: PerpetualPosition
+  marketQuestion?: string
+  agentName?: string
 }
 
-export function PositionRow({ position }: PositionRowProps) {
+export function PositionRow({ position, marketQuestion, agentName }: PositionRowProps) {
   return (
     <div
       className="grid px-4 py-2 transition-colors duration-150"
@@ -19,10 +21,28 @@ export function PositionRow({ position }: PositionRowProps) {
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
     >
       <div className="flex flex-col">
-        <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{position.outcome}</span>
-        <span style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'ui-monospace, monospace' }}>
-          {position.marketId.length > 16 ? `${position.marketId.slice(0, 16)}...` : position.marketId}
+        <span
+          style={{
+            fontSize: 13,
+            color: 'var(--text-primary)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: 260,
+          }}
+          title={marketQuestion}
+        >
+          {marketQuestion ?? position.marketId}
         </span>
+        <div className="flex items-center gap-2" style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+          <span>{position.outcome}</span>
+          {agentName && (
+            <>
+              <span style={{ color: 'var(--border)' }}>·</span>
+              <span>{agentName}</span>
+            </>
+          )}
+        </div>
       </div>
       <div className="flex items-center">
         <StatusBadge status={position.side} />

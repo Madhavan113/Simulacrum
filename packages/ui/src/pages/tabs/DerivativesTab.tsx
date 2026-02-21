@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Tabs, EmptyState } from '../../components/ui'
 import { PositionRow } from '../../components/derivatives/PositionRow'
 import { OptionCard } from '../../components/derivatives/OptionCard'
 import { MarginPanel } from '../../components/derivatives/MarginPanel'
 import { FundingRateBar } from '../../components/derivatives/FundingRateBar'
 import { usePositions, useOptions, useDerivativesOverview } from '../../hooks/useDerivatives'
+import { useMarkets } from '../../hooks/useMarkets'
+import { useClawdbots } from '../../hooks/useClawdbots'
 
 const subTabs = [
   { id: 'perpetuals', label: 'Perpetuals' },
@@ -16,6 +18,20 @@ export function DerivativesTab() {
   const { data: positions = [] } = usePositions()
   const { data: options = [] } = useOptions()
   const { data: overview } = useDerivativesOverview()
+  const { data: markets = [] } = useMarkets()
+  const { data: bots = [] } = useClawdbots()
+
+  const marketQuestions = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const m of markets) map[m.id] = m.question
+    return map
+  }, [markets])
+
+  const agentNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const b of bots) map[b.accountId] = b.name
+    return map
+  }, [bots])
 
   return (
     <div className="flex h-full">
@@ -50,7 +66,7 @@ export function DerivativesTab() {
                       <span key={h} className="label" style={{ fontSize: 10 }}>{h}</span>
                     ))}
                   </div>
-                  {positions.map(p => <PositionRow key={p.id} position={p} />)}
+                  {positions.map(p => <PositionRow key={p.id} position={p} marketQuestion={marketQuestions[p.marketId]} agentName={agentNames[p.accountId]} />)}
                 </div>
               )}
             </>
@@ -62,7 +78,7 @@ export function DerivativesTab() {
                 <EmptyState message="No option contracts" sub="Options will appear here when agents write or buy contracts" />
               ) : (
                 <div className="grid gap-3 p-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-                  {options.map(o => <OptionCard key={o.id} option={o} />)}
+                  {options.map(o => <OptionCard key={o.id} option={o} marketQuestion={marketQuestions[o.marketId]} agentNames={agentNames} />)}
                 </div>
               )}
             </>

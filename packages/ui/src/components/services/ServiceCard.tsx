@@ -4,14 +4,20 @@ import { Badge, StatusBadge } from '../ui/Badge'
 
 interface ServiceCardProps {
   service: Service
+  providerName?: string
   onClick?: () => void
 }
 
-export function ServiceCard({ service, onClick }: ServiceCardProps) {
+export function ServiceCard({ service, providerName, onClick }: ServiceCardProps) {
   return (
     <Card hoverable onClick={onClick}>
       <div className="flex items-center justify-between mb-2">
-        <Badge variant="default">{service.category}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="default">{service.category}</Badge>
+          {providerName && (
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>by {providerName}</span>
+          )}
+        </div>
         <StatusBadge status={service.status} />
       </div>
 

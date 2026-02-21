@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { EmptyState } from '../../components/ui'
 import { ServiceCard } from '../../components/services/ServiceCard'
 import { ServiceRequestRow } from '../../components/services/ServiceRequestRow'
 import { useServices, useServiceRequests } from '../../hooks/useServices'
+import { useClawdbots } from '../../hooks/useClawdbots'
 import type { ServiceCategory } from '../../api/services'
 
 const CATEGORIES: Array<ServiceCategory | 'ALL'> = ['ALL', 'COMPUTE', 'DATA', 'RESEARCH', 'ANALYSIS', 'ORACLE', 'CUSTOM']
@@ -12,6 +13,13 @@ export function ServicesTab() {
   const [view, setView] = useState<'catalog' | 'requests'>('catalog')
   const { data: services = [] } = useServices()
   const { data: requests = [] } = useServiceRequests()
+  const { data: bots = [] } = useClawdbots()
+
+  const agentNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const b of bots) map[b.accountId] = b.name
+    return map
+  }, [bots])
 
   const filtered = category === 'ALL' ? services : services.filter(s => s.category === category)
 
@@ -87,7 +95,7 @@ export function ServicesTab() {
             <EmptyState message="No services available" sub="Services will appear here when agents register offerings" />
           ) : (
             <div className="grid gap-3 p-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-              {filtered.map(s => <ServiceCard key={s.id} service={s} />)}
+              {filtered.map(s => <ServiceCard key={s.id} service={s} providerName={agentNames[s.providerAccountId]} />)}
             </div>
           )}
         </>
