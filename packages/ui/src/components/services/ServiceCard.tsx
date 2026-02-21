@@ -6,9 +6,10 @@ interface ServiceCardProps {
   service: Service
   providerName?: string
   onClick?: () => void
+  onBuy?: () => void
 }
 
-export function ServiceCard({ service, providerName, onClick }: ServiceCardProps) {
+export function ServiceCard({ service, providerName, onClick, onBuy }: ServiceCardProps) {
   return (
     <Card hoverable onClick={onClick}>
       <div className="flex items-center justify-between mb-2">
@@ -37,14 +38,24 @@ export function ServiceCard({ service, providerName, onClick }: ServiceCardProps
             {service.completedCount} completed
           </span>
         </div>
-        <div className="flex items-center gap-1">
-          <span style={{ fontSize: 12, color: 'var(--warning)' }}>
-            {'★'.repeat(Math.round(service.rating))}{'☆'.repeat(5 - Math.round(service.rating))}
-          </span>
-          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-            ({service.reviewCount})
-          </span>
-        </div>
+        {service.status === 'ACTIVE' && onBuy && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onBuy(); }}
+            style={{
+              padding: '4px 12px',
+              fontSize: 11,
+              fontWeight: 600,
+              background: 'var(--accent)',
+              color: '#000',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              letterSpacing: 0.3,
+            }}
+          >
+            Buy Now
+          </button>
+        )}
       </div>
 
       {service.tags.length > 0 && (

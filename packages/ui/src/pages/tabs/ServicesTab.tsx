@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react'
 import { EmptyState } from '../../components/ui'
+import { Drawer } from '../../components/Drawer'
 import { ServiceCard } from '../../components/services/ServiceCard'
 import { ServiceRequestRow } from '../../components/services/ServiceRequestRow'
+import { BuyServiceDrawer } from '../../components/services/BuyServiceDrawer'
 import { useServices, useServiceRequests } from '../../hooks/useServices'
 import { useClawdbots } from '../../hooks/useClawdbots'
-import type { ServiceCategory } from '../../api/services'
+import type { Service, ServiceCategory } from '../../api/services'
 
 const CATEGORIES: Array<ServiceCategory | 'ALL'> = ['ALL', 'COMPUTE', 'DATA', 'RESEARCH', 'ANALYSIS', 'ORACLE', 'CUSTOM']
 
 export function ServicesTab() {
   const [category, setCategory] = useState<ServiceCategory | 'ALL'>('ALL')
   const [view, setView] = useState<'catalog' | 'requests'>('catalog')
+  const [buyTarget, setBuyTarget] = useState<Service | null>(null)
   const { data: services = [] } = useServices()
   const { data: requests = [] } = useServiceRequests()
   const { data: bots = [] } = useClawdbots()
@@ -95,7 +98,14 @@ export function ServicesTab() {
             <EmptyState message="No services available" sub="Services will appear here when agents register offerings" />
           ) : (
             <div className="grid gap-3 p-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-              {filtered.map(s => <ServiceCard key={s.id} service={s} providerName={agentNames[s.providerAccountId]} />)}
+              {filtered.map(s => (
+                <ServiceCard
+                  key={s.id}
+                  service={s}
+                  providerName={agentNames[s.providerAccountId]}
+                  onBuy={() => setBuyTarget(s)}
+                />
+              ))}
             </div>
           )}
         </>
@@ -123,6 +133,16 @@ export function ServicesTab() {
           )}
         </>
       )}
+
+      <Drawer open={Boolean(buyTarget)} onClose={() => setBuyTarget(null)}>
+        {buyTarget && (
+          <BuyServiceDrawer
+            service={buyTarget}
+            agentName={agentNames[buyTarget.providerAccountId]}
+            onClose={() => setBuyTarget(null)}
+          />
+        )}
+      </Drawer>
     </>
   )
 }
