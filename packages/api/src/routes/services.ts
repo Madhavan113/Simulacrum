@@ -15,6 +15,7 @@ import {
 import { createHederaClient } from "@simulacrum/core";
 import type { ApiEventBus } from "../events.js";
 import type { ClawdbotNetwork } from "../clawdbots/network.js";
+import type { FulfillmentWorker } from "../clawdbots/fulfillment-worker.js";
 import { validateBody } from "../middleware/validation.js";
 
 const registerServiceSchema = z.object({
@@ -72,7 +73,7 @@ const buyServiceSchema = z.object({
   privateKeyType: z.enum(["der", "ecdsa", "ed25519"]).optional()
 });
 
-export function createServicesRouter(eventBus: ApiEventBus, clawdbotNetwork?: ClawdbotNetwork): Router {
+export function createServicesRouter(eventBus: ApiEventBus, clawdbotNetwork?: ClawdbotNetwork, fulfillmentWorker?: FulfillmentWorker): Router {
   const router = Router();
 
   router.get("/", (_request, response) => {
@@ -293,6 +294,26 @@ export function createServicesRouter(eventBus: ApiEventBus, clawdbotNetwork?: Cl
         });
         eventBus.publish("service.accepted", serviceRequest);
 
+        if (fulfillmentWorker) {
+          fulfillmentWorker.spawn({
+            requestId: serviceRequest.id,
+            serviceId: service.id,
+            providerAccountId: service.providerAccountId,
+            serviceName: service.name,
+            serviceDescription: service.description,
+            input: request.body.input,
+          });
+
+          response.status(202).json({
+            request: { ...serviceRequest, status: "IN_PROGRESS" },
+            service: { id: service.id, name: service.name, providerAccountId: service.providerAccountId },
+            moltbook: true,
+            async: true,
+            pollUrl: `/services/${service.id}/requests/${serviceRequest.id}/status`,
+          });
+          return;
+        }
+
         const output = await clawdbotNetwork.fulfillServiceRequest(
           service.providerAccountId,
           service.name,
@@ -318,6 +339,30 @@ export function createServicesRouter(eventBus: ApiEventBus, clawdbotNetwork?: Cl
         const message = error instanceof Error ? error.message : String(error);
         response.status(500).json({ error: message });
       }
+    }
+  );
+
+  router.get(
+    "/:serviceId/requests/:requestId/status",
+    (request, response) => {
+      const store = getServiceStore();
+      const serviceRequest = store.requests.get(request.params.requestId);
+
+      if (!serviceRequest || serviceRequest.serviceId !== request.params.serviceId) {
+        response.status(404).json({ error: "Request not found." });
+        return;
+      }
+
+      const job = fulfillmentWorker?.getJob(request.params.requestId);
+
+      response.json({
+        requestId: serviceRequest.id,
+        status: serviceRequest.status,
+        output: serviceRequest.output ?? null,
+        fulfillment: job
+          ? { status: job.status, error: job.error ?? null, createdAt: job.createdAt, completedAt: job.completedAt ?? null }
+          : null,
+      });
     }
   );
 

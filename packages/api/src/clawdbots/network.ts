@@ -51,6 +51,7 @@ import { createTask, bidOnTask, getTaskStore } from "@simulacrum/tasks";
 
 import type { ApiEvent, ApiEventBus } from "../events.js";
 import type { AgentRegistry } from "../routes/agents.js";
+import type { FulfillmentWorker } from "./fulfillment-worker.js";
 import {
   EncryptedBotCredentialStore,
   type BotCredentialBundle
@@ -554,6 +555,11 @@ export class ClawdbotNetwork {
   #lastDemoStartedAt: Date | null = null;
   #lastDemoCompletedAt: Date | null = null;
   #lastDemoError: string | null = null;
+  #fulfillmentWorker: FulfillmentWorker | null = null;
+
+  setFulfillmentWorker(worker: FulfillmentWorker): void {
+    this.#fulfillmentWorker = worker;
+  }
 
   constructor(options: ClawdbotNetworkOptions) {
     this.#eventBus = options.eventBus;
@@ -3212,20 +3218,6 @@ export class ClawdbotNetwork {
             providerAccountId: buySvc.providerAccountId
           });
 
-          const output = await this.fulfillServiceRequest(
-            buySvc.providerAccountId,
-            buySvc.name,
-            buySvc.description,
-            input
-          );
-
-          await completeRequest({
-            serviceId,
-            requestId: buyRequest.id,
-            providerAccountId: buySvc.providerAccountId,
-            output
-          });
-
           this.postMessage(
             `Bought "${buySvc.name}" from ${buySvc.providerAccountId} for ${buySvc.priceHbar} HBAR — "${input.slice(0, 80)}"`,
             runtime.agent.id
@@ -3240,9 +3232,33 @@ export class ClawdbotNetwork {
             priceHbar: buySvc.priceHbar,
             botId: runtime.agent.id,
             rationale: action.rationale,
-            output: output.slice(0, 200)
           });
           this.persistReputationChange(runtime, 5, `Bought service: ${buySvc.name}`);
+
+          if (this.#fulfillmentWorker) {
+            this.#fulfillmentWorker.spawn({
+              requestId: buyRequest.id,
+              serviceId,
+              providerAccountId: buySvc.providerAccountId,
+              serviceName: buySvc.name,
+              serviceDescription: buySvc.description,
+              input,
+            });
+          } else {
+            const output = await this.fulfillServiceRequest(
+              buySvc.providerAccountId,
+              buySvc.name,
+              buySvc.description,
+              input
+            );
+
+            await completeRequest({
+              serviceId,
+              requestId: buyRequest.id,
+              providerAccountId: buySvc.providerAccountId,
+              output
+            });
+          }
         } catch (error) {
           this.#eventBus.publish("clawdbot.action.error", {
             botId: runtime.agent.id,

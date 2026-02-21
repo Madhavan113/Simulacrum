@@ -27,6 +27,7 @@ import {
   type ClawdbotNetwork,
   type ClawdbotNetworkOptions
 } from "./clawdbots/network.js";
+import { FulfillmentWorker } from "./clawdbots/fulfillment-worker.js";
 import { runFundingSettlementSweep } from "./derivatives/settlement.js";
 import { runOptionsSweep } from "./derivatives/options-sweep.js";
 import { createEventBus, type ApiEventBus } from "./events.js";
@@ -257,6 +258,14 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
   });
 
   autonomyEngine.setFulfillmentProvider(clawdbotNetwork);
+
+  const fulfillmentWorker = clawdbotNetwork
+    ? new FulfillmentWorker(clawdbotNetwork, eventBus)
+    : null;
+
+  if (clawdbotNetwork && fulfillmentWorker) {
+    clawdbotNetwork.setFulfillmentWorker(fulfillmentWorker);
+  }
 
   const envResearchTickMs = Number(process.env.RESEARCH_TICK_MS);
   const envResearchAgentCount = Number(process.env.RESEARCH_AGENT_COUNT);
@@ -496,7 +505,7 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
   app.use("/research", createResearchRouter(researchEngine));
 
   // Agent economy routes (services marketplace, task board, economy dashboard)
-  app.use("/services", createServicesRouter(eventBus, clawdbotNetwork));
+  app.use("/services", createServicesRouter(eventBus, clawdbotNetwork, fulfillmentWorker ?? undefined));
   app.use("/tasks", createTasksRouter(eventBus));
   app.use("/economy", createEconomyRouter(eventBus));
   app.use("/derivatives", createDerivativesRouter(eventBus));
