@@ -1,10 +1,11 @@
-import { createFungibleToken, mintTokens, transferTokens, validateNonEmptyString, validatePositiveInteger } from "@simulacrum/core";
+import { associateToken, createFungibleToken, mintTokens, transferTokens, validateNonEmptyString, validatePositiveInteger } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getReputationStore, persistReputationStore, type ReputationStore } from "./store.js";
 import { ReputationError, type RepTokenConfig } from "./types.js";
 
 interface TokenDependencies {
+  associateToken: typeof associateToken;
   createFungibleToken: typeof createFungibleToken;
   mintTokens: typeof mintTokens;
   transferTokens: typeof transferTokens;
@@ -46,6 +47,7 @@ export async function createRepToken(
   validateNonEmptyString(input.treasuryAccountId, "treasuryAccountId");
 
   const deps: TokenDependencies = {
+    associateToken,
     createFungibleToken,
     mintTokens,
     transferTokens,
@@ -99,6 +101,7 @@ export async function mintAndDistributeRep(
   validatePositiveInteger(input.amount, "amount");
 
   const deps: TokenDependencies = {
+    associateToken,
     createFungibleToken,
     mintTokens,
     transferTokens,
@@ -113,6 +116,21 @@ export async function mintAndDistributeRep(
   }
 
   try {
+    // HTS requires the recipient to associate with the token before receiving it.
+    // Catch TOKEN_ALREADY_ASSOCIATED_TO_ACCOUNT so repeat distributions are idempotent.
+    try {
+      await deps.associateToken(input.recipientAccountId, tokenId, {
+        client: options.client
+      });
+    } catch (assocError: unknown) {
+      const alreadyAssociated =
+        assocError instanceof Error &&
+        assocError.message.includes("TOKEN_ALREADY_ASSOCIATED_TO_ACCOUNT");
+      if (!alreadyAssociated) {
+        throw assocError;
+      }
+    }
+
     const minted = await deps.mintTokens(tokenId, input.amount, {
       client: options.client
     });
