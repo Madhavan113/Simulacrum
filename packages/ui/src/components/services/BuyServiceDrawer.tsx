@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Service, MoltBookBuyResult } from '../../api/services'
 import { servicesApi } from '../../api/services'
 
@@ -20,11 +20,44 @@ export function BuyServiceDrawer({ service, agentName, availableWallets, onClose
   const [keyType, setKeyType] = useState<'der' | 'ecdsa' | 'ed25519'>('der')
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [polling, setPolling] = useState(false)
   const [result, setResult] = useState<MoltBookBuyResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const payerAccountId = walletMode === 'agent' ? selectedWallet : externalAccountId.trim()
   const canSubmit = input.trim() && payerAccountId && (walletMode === 'agent' || externalPrivateKey.trim())
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current)
+    }
+  }, [])
+
+  const pollForOutput = async (pollUrl: string, res: MoltBookBuyResult) => {
+    setPolling(true)
+    const poll = async () => {
+      try {
+        const status = await servicesApi.pollStatus(pollUrl)
+        if (status.status === 'COMPLETED' && status.output) {
+          setResult({ ...res, output: status.output, request: { ...res.request, status: 'COMPLETED', output: status.output } })
+          setPolling(false)
+          setLoading(false)
+          return
+        }
+        if (status.fulfillment?.status === 'FAILED') {
+          setError(status.fulfillment.error ?? 'Fulfillment failed')
+          setPolling(false)
+          setLoading(false)
+          return
+        }
+      } catch {
+        // keep polling on transient errors
+      }
+      pollRef.current = setTimeout(poll, 2000)
+    }
+    pollRef.current = setTimeout(poll, 1500)
+  }
 
   const handleBuy = async () => {
     if (!canSubmit) return
@@ -34,10 +67,15 @@ export function BuyServiceDrawer({ service, agentName, availableWallets, onClose
       const pk = walletMode === 'external' ? externalPrivateKey.trim() : undefined
       const kt = walletMode === 'external' ? keyType : undefined
       const res = await servicesApi.buy(service.id, input.trim(), payerAccountId, pk, kt)
-      setResult(res)
+      if (res.async && res.pollUrl) {
+        setResult(res)
+        pollForOutput(res.pollUrl, res)
+      } else {
+        setResult(res)
+        setLoading(false)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Purchase failed')
-    } finally {
       setLoading(false)
     }
   }
@@ -156,7 +194,10 @@ export function BuyServiceDrawer({ service, agentName, availableWallets, onClose
           <section className="px-6 py-5">
             <div className="flex items-center gap-2 mb-3">
               <p className="label">Response from {agentName ?? 'Agent'}</p>
-              <span style={{ fontSize: 10, color: 'var(--success)', fontWeight: 600 }}>FULFILLED</span>
+              {polling
+                ? <span style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 600 }}>GENERATING...</span>
+                : <span style={{ fontSize: 10, color: 'var(--success)', fontWeight: 600 }}>FULFILLED</span>
+              }
             </div>
             <div style={{
               background: 'var(--bg-raised)',
@@ -167,26 +208,32 @@ export function BuyServiceDrawer({ service, agentName, availableWallets, onClose
               color: 'var(--text-primary)',
               whiteSpace: 'pre-wrap',
               border: '1px solid var(--border)',
+              minHeight: polling ? 60 : undefined,
             }}>
-              {result.output}
+              {polling
+                ? <span style={{ color: 'var(--text-dim)' }}>{agentName ?? 'Agent'} is generating a response...</span>
+                : result.output
+              }
             </div>
-            <button
-              onClick={onClose}
-              style={{
-                marginTop: 16,
-                width: '100%',
-                padding: '10px 0',
-                fontSize: 13,
-                fontWeight: 500,
-                background: 'transparent',
-                color: 'var(--text-muted)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                cursor: 'pointer',
-              }}
-            >
-              Done
-            </button>
+            {!polling && (
+              <button
+                onClick={onClose}
+                style={{
+                  marginTop: 16,
+                  width: '100%',
+                  padding: '10px 0',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                Done
+              </button>
+            )}
           </section>
         )}
       </div>

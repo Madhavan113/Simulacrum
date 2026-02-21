@@ -44,9 +44,18 @@ export interface ServiceReview {
 
 export interface MoltBookBuyResult {
   request: ServiceRequest
-  output: string
+  output?: string
   service: { id: string; name: string; providerAccountId: string }
   moltbook: true
+  async?: boolean
+  pollUrl?: string
+}
+
+export interface PollStatusResult {
+  requestId: string
+  status: string
+  output: string | null
+  fulfillment: { status: string; error: string | null; createdAt: string; completedAt: string | null } | null
 }
 
 export const servicesApi = {
@@ -58,4 +67,5 @@ export const servicesApi = {
     method: 'POST',
     body: JSON.stringify({ input, payerAccountId, ...(privateKey ? { privateKey, privateKeyType: privateKeyType ?? 'der' } : {}) }),
   }),
+  pollStatus: (pollUrl: string) => apiFetch<PollStatusResult>(pollUrl),
 }
