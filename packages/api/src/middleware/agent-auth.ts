@@ -77,6 +77,10 @@ export function createAgentOnlyModeGuard(authService: AgentAuthService) {
         return true;
       }
 
+      if (request.path === "/.well-known/ucp" || request.path.startsWith("/ucp/")) {
+        return true;
+      }
+
       return false;
     }
   });

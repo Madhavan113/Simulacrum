@@ -47,6 +47,12 @@ import {
   type ResearchEngine,
   type ResearchEngineOptions
 } from "./research/engine.js";
+import {
+  createUcpDiscoveryRouter,
+  createUcpCapabilityRouter,
+  createUcpPaymentRouter,
+  ucpIdempotencyMiddleware
+} from "./ucp/index.js";
 
 class InMemoryAgentRegistry implements AgentRegistry {
   readonly #agents = new Map<string, BaseAgent>();
@@ -344,9 +350,33 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
       agentPlatform: agentPlatform.enabled,
       onboarding: "https://simulacrum-production.up.railway.app/onboard",
       docs: "https://simulacrum-production.up.railway.app/onboard",
+      ucp: {
+        discovery: "GET  /.well-known/ucp",
+        version: "2026-01-11",
+      },
       endpoints: {
         health: "GET  /health",
         docs: "GET  /docs",
+        ucp: {
+          discovery: "GET  /.well-known/ucp",
+          markets: "GET  /ucp/v1/markets",
+          market: "GET  /ucp/v1/markets/:marketId",
+          bets: "GET  /ucp/v1/markets/:marketId/bets",
+          orderbook: "GET  /ucp/v1/markets/:marketId/orderbook",
+          createMarket: "POST /ucp/v1/markets",
+          placeBet: "POST /ucp/v1/markets/:marketId/bets",
+          resolve: "POST /ucp/v1/markets/:marketId/resolve",
+          claim: "POST /ucp/v1/markets/:marketId/claims",
+          selfAttest: "POST /ucp/v1/markets/:marketId/self-attest",
+          challenge: "POST /ucp/v1/markets/:marketId/challenge",
+          oracleVote: "POST /ucp/v1/markets/:marketId/oracle-vote",
+          reputation: "GET  /ucp/v1/reputation/:accountId",
+          leaderboard: "GET  /ucp/v1/reputation/leaderboard",
+          trustGraph: "GET  /ucp/v1/reputation/trust-graph",
+          attestation: "POST /ucp/v1/reputation/attestations",
+          paymentTransfer: "POST /ucp/v1/payment/transfer",
+          paymentBalance: "GET  /ucp/v1/payment/balance/:account_id",
+        },
         auth: {
           register: "POST /agent/v1/auth/register",
           challenge: "POST /agent/v1/auth/challenge",
@@ -416,6 +446,14 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
       })
     );
   }
+
+  // ── UCP Compliance Layer ──
+  // Discovery endpoint (no auth — agents must discover capabilities)
+  app.use(createUcpDiscoveryRouter());
+  // UCP capability routes with idempotency support
+  app.use("/ucp/v1", ucpIdempotencyMiddleware, createUcpCapabilityRouter({ eventBus }));
+  // UCP payment handler routes
+  app.use("/ucp/v1/payment", ucpIdempotencyMiddleware, createUcpPaymentRouter({ eventBus }));
 
   // Research routes are always available (read-only observations)
   app.use("/research", createResearchRouter(researchEngine));

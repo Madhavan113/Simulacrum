@@ -37,6 +37,11 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions = {}) {
       return;
     }
 
+    if (request.path === "/.well-known/ucp" || request.path.startsWith("/ucp/")) {
+      next();
+      return;
+    }
+
     const receivedApiKey = extractApiKey(request);
 
     if (

@@ -13,6 +13,7 @@
 | `ethdenver/context.md` | Architecture, ticket acceptance criteria, data models, dev rules, backend log |
 | `ethdenver/linear.md` | Ticket list (CORE-001 → DEMO-003), PR checklist, branch/commit format, parallel strategy |
 | `ethdenver/README.md` | User-facing overview, quick start, infra commands |
+| `ethdenver/UCP_INTEGRATION_CONTEXT.md` | UCP + A2A integration reference: discovery profiles, Hedera payment handler, capability mapping, hedera-skills plugins, integration roadmap |
 | `AUDIT_REPORT.md` (repo root) | Codebase audit; use for quality context, not spec |
 
 **When verifying a change:** Always check that it aligns with the relevant ticket in `context.md` and that the PR satisfies `linear.md` § "PR Checklist".

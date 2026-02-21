@@ -89,3 +89,25 @@ export {
 } from "./middleware/agent-auth.js";
 
 export { validateBody } from "./middleware/validation.js";
+
+export {
+  createUcpDiscoveryRouter,
+  createUcpCapabilityRouter,
+  createUcpPaymentRouter,
+  ucpIdempotencyMiddleware,
+  UCP_VERSION,
+  type UcpDiscoveryProfile,
+  type UcpDiscoveryOptions,
+  type UcpCapability,
+  type UcpCapabilityInvocation,
+  type UcpCapabilityResponse,
+  type UcpCapabilityRouterOptions,
+  type UcpEnvelope,
+  type UcpPaymentHandler,
+  type UcpPaymentHandlerConfig,
+  type UcpPaymentHandlerOptions,
+  type UcpPaymentInstrument,
+  type UcpPaymentResult,
+  type UcpService,
+  type UcpServiceBinding
+} from "./ucp/index.js";
