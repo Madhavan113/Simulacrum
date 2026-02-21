@@ -19,10 +19,10 @@ export async function runProductionServer(): Promise<void> {
   const server = createApiServer({
     clawdbots: {
       enabled: clawdbotsEnabled,
-      botCount: Number(process.env.CLAWDBOT_COUNT ?? 3),
-      initialBotBalanceHbar: Number(process.env.CLAWDBOT_BALANCE_HBAR ?? 20),
-      tickMs: Number(process.env.CLAWDBOT_TICK_MS ?? 30_000),
-      marketCloseMinutes: Number(process.env.CLAWDBOT_MARKET_CLOSE_MINUTES ?? 15),
+      botCount: Number(process.env.CLAWDBOT_COUNT ?? 5),
+      initialBotBalanceHbar: Number(process.env.CLAWDBOT_BALANCE_HBAR ?? 30),
+      tickMs: Number(process.env.CLAWDBOT_TICK_MS ?? 8_000),
+      marketCloseMinutes: Number(process.env.CLAWDBOT_MARKET_CLOSE_MINUTES ?? 10),
     },
     research: {
       enabled: researchEnabled,

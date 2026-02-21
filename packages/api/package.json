@@ -25,6 +25,7 @@
     "@simulacrum/agents": "workspace:*",
     "@simulacrum/coordination": "workspace:*",
     "@simulacrum/core": "workspace:*",
+    "@simulacrum/derivatives": "workspace:*",
     "@simulacrum/insurance": "workspace:*",
     "@simulacrum/markets": "workspace:*",
     "@simulacrum/reputation": "workspace:*",

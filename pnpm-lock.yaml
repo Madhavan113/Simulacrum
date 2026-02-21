@@ -42,6 +42,9 @@ importers:
       '@simulacrum/core':
         specifier: workspace:*
         version: link:../core
+      '@simulacrum/derivatives':
+        specifier: workspace:*
+        version: link:../derivatives
       '@simulacrum/insurance':
         specifier: workspace:*
         version: link:../insurance

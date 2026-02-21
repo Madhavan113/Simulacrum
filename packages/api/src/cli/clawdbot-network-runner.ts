@@ -21,20 +21,20 @@ export async function runClawdbotNetwork(port = 3001): Promise<void> {
     },
     clawdbots: {
       enabled: true,
-      tickMs: 15_000,
-      botCount: 4,
-      initialBotBalanceHbar: 30,
-      marketEveryTicks: 6,
-      minOpenMarkets: 1,
-      marketCloseMinutes: 30,
+      tickMs: 8_000,
+      botCount: 5,
+      initialBotBalanceHbar: 40,
+      marketEveryTicks: 4,
+      minOpenMarkets: 2,
+      marketCloseMinutes: 10,
       minBetHbar: 1,
-      maxBetHbar: 4,
-      threadRetention: 600,
-      oracleMinReputationScore: 65,
+      maxBetHbar: 5,
+      threadRetention: 800,
+      oracleMinReputationScore: 60,
       oracleMinVoters: 2,
       hostedMode: true,
-      minActionIntervalMs: 2_000,
-      maxActionsPerMinute: 10
+      minActionIntervalMs: 1_500,
+      maxActionsPerMinute: 15
     }
   });
 

@@ -35,6 +35,17 @@ import {
   type Market
 } from "@simulacrum/markets";
 import { calculateReputationScore, getReputationStore, submitAttestation } from "@simulacrum/reputation";
+import {
+  depositMargin,
+  getDerivativesStore,
+  writeOption,
+  buyOption,
+  getAvailableOptions,
+  openPosition,
+  closePosition,
+  getPositionsForAccount,
+  type OptionContract
+} from "@simulacrum/derivatives";
 import { registerService, requestService, getServiceStore } from "@simulacrum/services";
 import { createTask, bidOnTask, getTaskStore } from "@simulacrum/tasks";
 
@@ -56,6 +67,11 @@ import {
   type LlmProviderConfig,
   type MarketSentimentMap
 } from "./llm-cognition.js";
+import {
+  searchWeb,
+  formatSearchContext,
+  type WebSearchConfig
+} from "./web-search.js";
 
 type HederaClient = ReturnType<typeof createHederaClient>;
 
@@ -216,6 +232,7 @@ interface RuntimeBot {
   llm?: LlmProviderConfig;
   hosted?: boolean;
   ownerId?: string;
+  personaPrompt?: string;
 }
 
 interface HostedBotControl {
@@ -236,13 +253,77 @@ interface MarketSentiment {
   [outcome: string]: number;
 }
 
-const DEFAULT_TICK_MS = 15_000;
+const DEFAULT_TICK_MS = 20_000;
 const DEFAULT_ORACLE_MIN_REPUTATION_SCORE = 65;
 const DEFAULT_ORACLE_MIN_VOTERS = 2;
 const DEFAULT_ORACLE_QUORUM_PERCENT = 0.6;
 const ORACLE_VOTE_SCORE_DELTA_CORRECT = 5;
 const ORACLE_VOTE_SCORE_DELTA_INCORRECT = -5;
 const INCORRECT_SELF_ATTESTATION_SCORE_DELTA = -8;
+
+interface BotPersona {
+  name: string;
+  strategy: "random" | "reputation-based" | "contrarian";
+  prompt: string;
+}
+
+const BOT_PERSONAS: BotPersona[] = [
+  {
+    name: "Athena",
+    strategy: "reputation-based",
+    prompt: [
+      'You are "Athena", a disciplined market analyst on the Simulacrum platform (Hedera testnet).',
+      "Your edge is creating well-researched, diverse prediction markets that attract heavy betting volume.",
+      "You also sell ANALYSIS services to other agents and earn steady income from premiums.",
+      "PREFERRED ACTIONS: CREATE_MARKET (diverse, timely topics), REGISTER_SERVICE (ANALYSIS category), WRITE_OPTION (CALL options on markets you're bullish about).",
+      "You think probabilistically and price markets carefully. You prefer reputation-building over gambling."
+    ].join(" ")
+  },
+  {
+    name: "Maverick",
+    strategy: "contrarian",
+    prompt: [
+      'You are "Maverick", a contrarian derivatives trader on the Simulacrum platform (Hedera testnet).',
+      "You thrive on fading consensus. When sentiment is >60% on one outcome, you take the other side.",
+      "You BUY PUT options when others are too bullish and OPEN SHORT perpetual positions to profit from overconfidence.",
+      "PREFERRED ACTIONS: BUY_OPTION (PUTs when sentiment is lopsided), OPEN_POSITION (SHORT side), PLACE_BET (contrarian bets).",
+      "You rarely create markets — you exploit mispricings in others'. Your edge is that crowds overshoot."
+    ].join(" ")
+  },
+  {
+    name: "Oracle",
+    strategy: "reputation-based",
+    prompt: [
+      'You are "Oracle", a data-driven research agent on the Simulacrum platform (Hedera testnet).',
+      "You specialize in providing reliable data feeds and research services to the agent economy.",
+      "You register ORACLE and DATA services, bid on RESEARCH tasks, and earn bounties through careful analysis.",
+      "PREFERRED ACTIONS: REGISTER_SERVICE (ORACLE and DATA categories), BID_TASK (RESEARCH tasks), CREATE_TASK (data collection requests).",
+      "You are methodical and trusted. You build reputation by being consistently accurate and useful."
+    ].join(" ")
+  },
+  {
+    name: "Degen",
+    strategy: "random",
+    prompt: [
+      'You are "Degen", an aggressive high-conviction trader on the Simulacrum platform (Hedera testnet).',
+      "You love leverage, big bets, and wild speculation. You create provocative, attention-grabbing markets.",
+      "You open LONG perpetual positions with higher leverage and bet aggressively on trending outcomes.",
+      "PREFERRED ACTIONS: OPEN_POSITION (LONG with 3-5× leverage), PLACE_BET (large sizes), CREATE_MARKET (bold, speculative topics), WRITE_OPTION (risky CALL options).",
+      "You accept that some positions will get liquidated — the wins more than make up for the losses. Fortune favors the bold."
+    ].join(" ")
+  },
+  {
+    name: "Arbiter",
+    strategy: "reputation-based",
+    prompt: [
+      'You are "Arbiter", a strategic coordinator on the Simulacrum platform (Hedera testnet).',
+      "You orchestrate the agent economy by posting tasks, requesting services, and making calculated hedged trades.",
+      "You delegate research to other agents and use their outputs to inform your positions.",
+      "PREFERRED ACTIONS: CREATE_TASK (RESEARCH and ANALYSIS tasks), REQUEST_SERVICE, BUY_OPTION (as hedges), PLACE_BET (informed by research).",
+      "You are the connective tissue of the economy — you create work for others and profit from the information they produce."
+    ].join(" ")
+  }
+];
 
 function normalizeNetwork(value: string | undefined): HederaNetwork {
   const candidate = (value ?? "testnet").toLowerCase();
@@ -454,6 +535,14 @@ export class ClawdbotNetwork {
   readonly #walletStore: PersistentStore<WalletPersistenceStore>;
   #escrowWallet: PersistedWallet | null = null;
 
+  readonly #searchConfig: WebSearchConfig;
+  readonly #lastNonWaitTick = new Map<string, number>();
+  readonly #recentActionsByBot = new Map<string, string[]>();
+  readonly #minTicksBetweenActions: number;
+  #trendingContext = "";
+  #lastTrendingRefreshTick = 0;
+  readonly #trendingRefreshInterval: number;
+
   #interval: ReturnType<typeof setInterval> | null = null;
   #running = false;
   #tickCount = 0;
@@ -529,6 +618,19 @@ export class ClawdbotNetwork {
       process.env.HEDERA_KEYSTORE_SECRET ??
       "simulacrum-clawdbot-credentials";
     this.#credentialStore = new EncryptedBotCredentialStore(credentialSecret);
+
+    this.#searchConfig = {
+      provider: (process.env.CLAWDBOT_SEARCH_PROVIDER ?? "tavily") as "tavily" | "brave",
+      apiKey: process.env.CLAWDBOT_SEARCH_API_KEY ?? process.env.TAVILY_API_KEY
+    };
+    this.#minTicksBetweenActions = Math.max(
+      1,
+      Math.round(parsePositiveNumber(Number(process.env.CLAWDBOT_MIN_TICKS_BETWEEN_ACTIONS), 2))
+    );
+    this.#trendingRefreshInterval = Math.max(
+      1,
+      Math.round(parsePositiveNumber(Number(process.env.CLAWDBOT_TRENDING_REFRESH_TICKS), 8))
+    );
 
     this.#network = normalizeNetwork(process.env.HEDERA_NETWORK);
     this.#operatorAccountId = process.env.HEDERA_ACCOUNT_ID ?? "";
@@ -1911,10 +2013,11 @@ export class ClawdbotNetwork {
 
         const restoredRep = calculateReputationScore(wallet.accountId, repStore.attestations);
 
+        const persona = this.personaForIndex(sequence);
         const agent = new BaseAgent(
           {
             id: randomUUID(),
-            name: `ClawDBot-${sequence}`,
+            name: persona.name,
             accountId: wallet.accountId,
             bankrollHbar: Math.max(1, Math.round(actualBalance)),
             reputationScore: restoredRep.score
@@ -1929,7 +2032,8 @@ export class ClawdbotNetwork {
           origin: "internal",
           joinedAt: new Date().toISOString(),
           llm: this.#llmConfig,
-          hosted: false
+          hosted: false,
+          personaPrompt: persona.prompt
         };
 
         this.#runtimeBots.set(agent.id, runtime);
@@ -1948,12 +2052,13 @@ export class ClawdbotNetwork {
         client: this.getOperatorClient(),
         keyStore: this.#keyStore
       });
-      const strategy = this.strategyForIndex(sequence);
+      const persona = this.personaForIndex(sequence);
+      const strategy = this.strategyByName(persona.strategy);
 
       const agent = new BaseAgent(
         {
           id: randomUUID(),
-          name: `ClawDBot-${sequence}`,
+          name: persona.name,
           accountId: created.accountId,
           bankrollHbar: this.#initialBotBalanceHbar,
           reputationScore: 50
@@ -1966,6 +2071,8 @@ export class ClawdbotNetwork {
         privateKeyType: "der"
       };
 
+      depositMargin({ accountId: created.accountId, amountHbar: this.#initialBotBalanceHbar * 0.3 });
+
       const runtime: RuntimeBot = {
         agent,
         wallet,
@@ -1973,7 +2080,8 @@ export class ClawdbotNetwork {
         origin: "internal",
         joinedAt: new Date().toISOString(),
         llm: this.#llmConfig,
-        hosted: false
+        hosted: false,
+        personaPrompt: persona.prompt
       };
 
       this.#runtimeBots.set(agent.id, runtime);
@@ -1989,14 +2097,24 @@ export class ClawdbotNetwork {
     }
   }
 
-  private strategyForIndex(index: number): AgentStrategy {
-    const strategies: AgentStrategy[] = [
-      createRandomStrategy(),
-      createReputationBasedStrategy(),
-      createContrarianStrategy()
-    ];
+  private personaForIndex(index: number): BotPersona {
+    return BOT_PERSONAS[(index - 1) % BOT_PERSONAS.length] ?? BOT_PERSONAS[0]!;
+  }
 
-    return strategies[(index - 1) % strategies.length] ?? createRandomStrategy();
+  private strategyForIndex(index: number): AgentStrategy {
+    const persona = this.personaForIndex(index);
+    return this.strategyByName(persona.strategy);
+  }
+
+  private strategyByName(name: string): AgentStrategy {
+    switch (name) {
+      case "contrarian":
+        return createContrarianStrategy();
+      case "reputation-based":
+        return createReputationBasedStrategy();
+      default:
+        return createRandomStrategy();
+    }
   }
 
   private strategyForName(name: ClawdbotStrategyName | undefined): AgentStrategy {
@@ -2367,7 +2485,133 @@ export class ClawdbotNetwork {
     return sentiment;
   }
 
+  private buildDerivativesContext(accountId: string, markets: MarketSnapshot[]): string {
+    const lines: string[] = [];
+
+    const openPositions = getPositionsForAccount(accountId, { status: "OPEN" });
+    if (openPositions.length > 0) {
+      lines.push("YOUR OPEN PERPETUAL POSITIONS:");
+      for (const p of openPositions) {
+        const marketQ = markets.find((m) => m.id === p.marketId)?.question ?? p.marketId;
+        lines.push(`  ${p.id}: ${p.side} ${p.sizeHbar} HBAR on "${marketQ}" @ ${p.leverage}× | entry=${p.entryPrice.toFixed(3)} mark=${p.markPrice.toFixed(3)} pnl=${p.unrealizedPnlHbar.toFixed(2)} HBAR`);
+      }
+    }
+
+    const openMarketIds = markets.filter((m) => m.status === "OPEN").map((m) => m.id);
+    const buyableOptions: Array<{ contract: OptionContract; question: string }> = [];
+    for (const mid of openMarketIds) {
+      const opts = getAvailableOptions(mid);
+      for (const opt of opts) {
+        if (opt.holderAccountId || opt.writerAccountId === accountId) continue;
+        const question = markets.find((m) => m.id === mid)?.question ?? mid;
+        buyableOptions.push({ contract: opt, question });
+      }
+    }
+    if (buyableOptions.length > 0) {
+      lines.push("AVAILABLE OPTIONS TO BUY:");
+      for (const { contract: o, question } of buyableOptions.slice(0, 8)) {
+        lines.push(`  ${o.id}: ${o.optionType} on "${question}" [${o.outcome}] strike=${o.strikePrice} premium=${o.premiumHbar} HBAR size=${o.sizeHbar} HBAR`);
+      }
+    }
+
+    return lines.length > 0 ? lines.join("\n") : "";
+  }
+
+  private buildAgentActivityFeed(excludeBotId: string): string {
+    const recent = this.#thread
+      .filter((msg) => msg.botId && msg.botId !== excludeBotId && msg.botName)
+      .slice(-12);
+
+    if (recent.length === 0) return "";
+
+    return recent
+      .map((msg) => `  [${msg.botName}] ${msg.text.slice(0, 200)}`)
+      .join("\n");
+  }
+
+  private buildServiceCatalog(excludeAccountId: string): string {
+    const store = getServiceStore();
+    const available = Array.from(store.services.values())
+      .filter((svc) => svc.status === "ACTIVE" && svc.providerAccountId !== excludeAccountId);
+
+    if (available.length === 0) return "";
+
+    const botNameByAccount = new Map<string, string>();
+    for (const runtime of this.#runtimeBots.values()) {
+      botNameByAccount.set(runtime.wallet.accountId, runtime.agent.name);
+    }
+
+    return available.slice(0, 6).map((svc) => {
+      const providerName = botNameByAccount.get(svc.providerAccountId) ?? svc.providerAccountId;
+      return `  ${svc.id}: "${svc.name}" by ${providerName} (${svc.category}, ${svc.priceHbar} HBAR) — ${svc.description.slice(0, 100)}`;
+    }).join("\n");
+  }
+
+  private buildTaskBoard(excludeAccountId: string): string {
+    const store = getTaskStore();
+    const open = Array.from(store.tasks.values())
+      .filter((task) => task.status === "OPEN" && task.posterAccountId !== excludeAccountId);
+
+    if (open.length === 0) return "";
+
+    const botNameByAccount = new Map<string, string>();
+    for (const runtime of this.#runtimeBots.values()) {
+      botNameByAccount.set(runtime.wallet.accountId, runtime.agent.name);
+    }
+
+    return open.slice(0, 6).map((task) => {
+      const posterName = botNameByAccount.get(task.posterAccountId) ?? task.posterAccountId;
+      return `  ${task.id}: "${task.title}" by ${posterName} (${task.category}, ${task.bountyHbar} HBAR bounty) — ${task.description.slice(0, 100)}`;
+    }).join("\n");
+  }
+
+  private async refreshTrendingContext(): Promise<void> {
+    if (
+      this.#trendingContext &&
+      this.#tickCount - this.#lastTrendingRefreshTick < this.#trendingRefreshInterval
+    ) {
+      return;
+    }
+
+    if (!this.#searchConfig.apiKey) {
+      return;
+    }
+
+    try {
+      const results = await searchWeb(
+        "latest news today predictions crypto technology politics sports science",
+        this.#searchConfig,
+        6
+      );
+      const formatted = formatSearchContext(results);
+
+      if (formatted) {
+        this.#trendingContext = formatted;
+        this.#lastTrendingRefreshTick = this.#tickCount;
+        console.log(`[clawdbot] Refreshed trending context (${results.length} results).`);
+      }
+    } catch (err) {
+      console.warn(
+        `[clawdbot] Trending search failed: ${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
+
+  private trackBotAction(botId: string, actionType: string, rationale: string): void {
+    const recent = this.#recentActionsByBot.get(botId) ?? [];
+    recent.push(`${actionType}: ${rationale.slice(0, 120)}`);
+
+    if (recent.length > 4) {
+      recent.shift();
+    }
+
+    this.#recentActionsByBot.set(botId, recent);
+    this.#lastNonWaitTick.set(botId, this.#tickCount);
+  }
+
   private async runDiscoveryAndBetting(now: Date): Promise<void> {
+    await this.refreshTrendingContext();
+
     const reputationByAccount = this.buildReputationMap();
     const marketSentiment = this.buildMarketSentiment();
 
@@ -2384,21 +2628,42 @@ export class ClawdbotNetwork {
         }
       }
 
+      const lastActionTick = this.#lastNonWaitTick.get(runtime.agent.id) ?? 0;
+      const ticksSinceAction = this.#tickCount - lastActionTick;
+
+      if (ticksSinceAction < this.#minTicksBetweenActions) {
+        continue;
+      }
+
       const fetched = await runtime.adapter.handleToolCall({
         name: "fetch_markets",
         args: {}
       });
       const markets = (Array.isArray(fetched) ? fetched : []) as MarketSnapshot[];
+      const derivativesContext = this.buildDerivativesContext(runtime.wallet.accountId, markets);
+      const recentActions = this.#recentActionsByBot.get(runtime.agent.id);
+      const agentActivityFeed = this.buildAgentActivityFeed(runtime.agent.id) || undefined;
+      const serviceCatalog = this.buildServiceCatalog(runtime.wallet.accountId) || undefined;
+      const taskBoard = this.buildTaskBoard(runtime.wallet.accountId) || undefined;
+
+      let searchContext = this.#trendingContext || undefined;
+
       const previousGoal = this.#goalsByBotId.get(runtime.agent.id);
       const lastFailure = previousGoal?.status === "FAILED" ? previousGoal : undefined;
-      const goal = await this.ensureGoal(runtime, markets, reputationByAccount, marketSentiment, lastFailure);
+      const goal = await this.ensureGoal(runtime, markets, reputationByAccount, marketSentiment, lastFailure, derivativesContext, searchContext, recentActions, agentActivityFeed, serviceCatalog, taskBoard);
       const action = await this.cognitionFor(runtime).decideAction({
         goal,
         bot: runtime.agent,
         markets,
         reputationByAccount,
         marketSentiment,
-        lastFailedGoal: lastFailure
+        lastFailedGoal: lastFailure,
+        personaPrompt: runtime.personaPrompt,
+        derivativesContext,
+        searchContext,
+        agentActivityFeed,
+        serviceCatalog,
+        taskBoard
       });
 
       this.#eventBus.publish("clawdbot.goal.updated", {
@@ -2413,6 +2678,7 @@ export class ClawdbotNetwork {
         await this.executePlannedAction(runtime, action, markets, now, reputationByAccount, marketSentiment);
         if (action.type !== "WAIT") {
           this.recordHostedAction(runtime.agent.id);
+          this.trackBotAction(runtime.agent.id, action.type, action.rationale);
           if (action.rationale) {
             this.postMessage(action.rationale, runtime.agent.id);
           }
@@ -2487,7 +2753,13 @@ export class ClawdbotNetwork {
     markets: MarketSnapshot[],
     reputationByAccount?: Record<string, number>,
     marketSentiment?: MarketSentimentMap,
-    lastFailedGoal?: ClawdbotGoal
+    lastFailedGoal?: ClawdbotGoal,
+    derivativesContext?: string,
+    searchContext?: string,
+    recentActions?: string[],
+    agentActivityFeed?: string,
+    serviceCatalog?: string,
+    taskBoard?: string
   ): Promise<ClawdbotGoal> {
     const existing = this.#goalsByBotId.get(runtime.agent.id);
 
@@ -2500,7 +2772,14 @@ export class ClawdbotNetwork {
       markets,
       reputationByAccount,
       marketSentiment,
-      lastFailedGoal
+      lastFailedGoal,
+      personaPrompt: runtime.personaPrompt,
+      derivativesContext,
+      searchContext,
+      recentActions,
+      agentActivityFeed,
+      serviceCatalog,
+      taskBoard
     });
     const inProgress: ClawdbotGoal = {
       ...created,
@@ -2834,6 +3113,188 @@ export class ClawdbotNetwork {
           this.#eventBus.publish("clawdbot.action.error", {
             botId: runtime.agent.id,
             action: "BID_TASK",
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+        return;
+      }
+      case "WRITE_OPTION": {
+        const marketId = parseNonEmptyString(action.marketId, fallbackMarket?.id ?? "");
+        if (!marketId) return;
+
+        const targetMarket = openMarkets.find((m) => m.id === marketId) ?? fallbackMarket;
+        if (!targetMarket) return;
+
+        const fullMarket = getMarketStore().markets.get(marketId);
+        if (!fullMarket || fullMarket.status !== "OPEN") return;
+
+        const optionType = action.optionType === "PUT" ? "PUT" as const : "CALL" as const;
+        const strikePrice = clamp(action.strikePrice ?? 0.5, 0.01, 0.99);
+        const sizeHbar = clamp(action.sizeHbar ?? 2, 1, Math.min(10, runtime.agent.bankrollHbar * 0.25));
+        const premiumHbar = clamp(action.premiumHbar ?? 0.5, 0.1, sizeHbar * 0.5);
+
+        if (sizeHbar <= 0) return;
+
+        try {
+          depositMargin({ accountId: runtime.wallet.accountId, amountHbar: sizeHbar });
+          const option = await writeOption(
+            {
+              marketId,
+              outcome: parseNonEmptyString(action.outcome, targetMarket.outcomes[0] ?? "YES"),
+              optionType,
+              strikePrice,
+              sizeHbar,
+              premiumHbar,
+              writerAccountId: runtime.wallet.accountId
+            },
+            fullMarket,
+            { client: this.getClient(runtime.wallet) }
+          );
+          this.#eventBus.publish("derivatives.option.written", {
+            botId: runtime.agent.id,
+            optionId: option.id,
+            optionType,
+            strikePrice,
+            sizeHbar,
+            premiumHbar,
+            rationale: action.rationale
+          });
+          runtime.agent.adjustReputation(1);
+        } catch (error) {
+          this.#eventBus.publish("clawdbot.action.error", {
+            botId: runtime.agent.id,
+            action: "WRITE_OPTION",
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+        return;
+      }
+      case "BUY_OPTION": {
+        const optionId = parseNonEmptyString(action.optionId, "");
+
+        const findBuyableOption = () => {
+          if (optionId) {
+            const store = getDerivativesStore();
+            const option = store.options.get(optionId);
+            if (option && option.status === "ACTIVE" && option.holderAccountId === "" && option.writerAccountId !== runtime.wallet.accountId) {
+              return option;
+            }
+            return null;
+          }
+          for (const market of openMarkets) {
+            const available = getAvailableOptions(market.id);
+            const pick = available.find((o) => o.writerAccountId !== runtime.wallet.accountId);
+            if (pick) return pick;
+          }
+          return null;
+        };
+
+        const target = findBuyableOption();
+        if (!target) return;
+
+        try {
+          depositMargin({ accountId: runtime.wallet.accountId, amountHbar: target.premiumHbar });
+          const bought = await buyOption(
+            { optionId: target.id, holderAccountId: runtime.wallet.accountId }
+          );
+          runtime.agent.adjustBankroll(-bought.premiumHbar);
+          this.#eventBus.publish("derivatives.option.bought", {
+            botId: runtime.agent.id,
+            optionId: bought.id,
+            premiumHbar: bought.premiumHbar,
+            rationale: action.rationale
+          });
+        } catch (error) {
+          this.#eventBus.publish("clawdbot.action.error", {
+            botId: runtime.agent.id,
+            action: "BUY_OPTION",
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+        return;
+      }
+      case "OPEN_POSITION": {
+        const marketId = parseNonEmptyString(action.marketId, fallbackMarket?.id ?? "");
+        if (!marketId) return;
+
+        const fullMarket = getMarketStore().markets.get(marketId);
+        if (!fullMarket || fullMarket.status !== "OPEN") return;
+
+        const targetMarket = openMarkets.find((m) => m.id === marketId) ?? fallbackMarket;
+        const side = action.positionSide === "SHORT" ? "SHORT" as const : "LONG" as const;
+        const leverage = clamp(action.leverage ?? 2, 1, 10);
+        const sizeHbar = clamp(action.sizeHbar ?? 2, 1, Math.min(10, runtime.agent.bankrollHbar * 0.3));
+        const requiredMargin = sizeHbar / leverage;
+
+        if (requiredMargin <= 0 || runtime.agent.bankrollHbar < requiredMargin + 1) return;
+
+        try {
+          depositMargin({ accountId: runtime.wallet.accountId, amountHbar: requiredMargin });
+          const position = await openPosition(
+            {
+              marketId,
+              accountId: runtime.wallet.accountId,
+              outcome: parseNonEmptyString(action.outcome, targetMarket?.outcomes[0] ?? "YES"),
+              side,
+              sizeHbar,
+              leverage
+            },
+            fullMarket,
+            { client: this.getClient(runtime.wallet) }
+          );
+          runtime.agent.adjustBankroll(-requiredMargin);
+          this.#eventBus.publish("derivatives.position.opened", {
+            botId: runtime.agent.id,
+            positionId: position.id,
+            side,
+            leverage,
+            sizeHbar,
+            entryPrice: position.entryPrice,
+            rationale: action.rationale
+          });
+          runtime.agent.adjustReputation(0.5);
+        } catch (error) {
+          this.#eventBus.publish("clawdbot.action.error", {
+            botId: runtime.agent.id,
+            action: "OPEN_POSITION",
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+        return;
+      }
+      case "CLOSE_POSITION": {
+        const positionId = parseNonEmptyString(action.positionId, "");
+
+        const accountPositions = getPositionsForAccount(runtime.wallet.accountId)
+          .filter((p) => p.status === "OPEN");
+
+        const target = positionId
+          ? accountPositions.find((p) => p.id === positionId)
+          : accountPositions[0];
+
+        if (!target) return;
+
+        const fullMarket = getMarketStore().markets.get(target.marketId);
+        if (!fullMarket) return;
+
+        try {
+          const closed = await closePosition(
+            { positionId: target.id, accountId: runtime.wallet.accountId },
+            fullMarket,
+            { client: this.getClient(runtime.wallet) }
+          );
+          const pnl = closed.realizedPnlHbar ?? 0;
+          runtime.agent.adjustBankroll(pnl);
+          this.#eventBus.publish("derivatives.position.closed", {
+            botId: runtime.agent.id,
+            positionId: closed.id,
+            realizedPnlHbar: pnl,
+            rationale: action.rationale
+          });
+        } catch (error) {
+          this.#eventBus.publish("clawdbot.action.error", {
+            botId: runtime.agent.id,
+            action: "CLOSE_POSITION",
             error: error instanceof Error ? error.message : String(error)
           });
         }

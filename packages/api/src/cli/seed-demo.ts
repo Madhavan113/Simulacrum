@@ -1,50 +1,25 @@
+/**
+ * Legacy seed-demo entry point.
+ *
+ * All agent creation, market seeding, service registration, and task posting
+ * are now handled organically by the ClawDBot persona network
+ * (see clawdbot-network-runner.ts). This file is kept only so that existing
+ * npm scripts (`infra:seed`, `infra:demo`) don't break — it boots a bare
+ * server with no pre-seeded state.
+ */
+
 import { createApiServer } from "../server.js";
-import { resetAllBackendState } from "./reset-state.js";
 import {
   isExecutedDirectly,
   loadEnvFromDisk,
   logStep,
   readPrimaryCredentials,
-  requestJson,
   setSigner
 } from "./utils.js";
+import { resetAllBackendState } from "./reset-state.js";
 
 interface SeedSummary {
   operatorAccountId: string;
-  marketId: string;
-  agentIds: string[];
-}
-
-async function seedViaApi(baseUrl: string, operatorAccountId: string): Promise<SeedSummary> {
-  logStep("Seeding agents");
-  const agent1 = await requestJson<{ agent: { id: string } }>("POST", `${baseUrl}/agents`, {
-    name: "Alpha",
-    accountId: operatorAccountId,
-    bankrollHbar: 100,
-    strategy: "random"
-  }, 201);
-  const agent2 = await requestJson<{ agent: { id: string } }>("POST", `${baseUrl}/agents`, {
-    name: "Beta",
-    accountId: operatorAccountId,
-    bankrollHbar: 100,
-    strategy: "contrarian"
-  }, 201);
-
-  logStep("Seeding demo market");
-  const created = await requestJson<{ market: { id: string } }>("POST", `${baseUrl}/markets`, {
-    question: "Will Simulacrum demo execute successfully?",
-    description: "Seeded market for hackathon demos",
-    creatorAccountId: operatorAccountId,
-    escrowAccountId: operatorAccountId,
-    closeTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    outcomes: ["YES", "NO"]
-  }, 201);
-
-  return {
-    operatorAccountId,
-    marketId: created.market.id,
-    agentIds: [agent1.agent.id, agent2.agent.id]
-  };
 }
 
 function bootstrapSigner(): { envPath: string; operatorAccountId: string } {
@@ -72,24 +47,20 @@ export async function seedDemoData(): Promise<SeedSummary> {
 
   const server = createApiServer();
   const port = await server.start(0);
-  const baseUrl = `http://127.0.0.1:${port}`;
+  logStep(`Bare server started on port ${port} — no seed data (agents bootstrap themselves).`);
 
-  try {
-    return await seedViaApi(baseUrl, operatorAccountId);
-  } finally {
-    await server.stop();
-  }
+  await server.stop();
+  return { operatorAccountId };
 }
 
 export async function seedAndServeDemoData(port = 3001): Promise<void> {
   const { operatorAccountId } = bootstrapSigner();
   const server = createApiServer();
   const boundPort = await server.start(port);
-  const baseUrl = `http://127.0.0.1:${boundPort}`;
-  const summary = await seedViaApi(baseUrl, operatorAccountId);
 
-  logStep("Seed complete; server is running");
-  console.log(JSON.stringify({ baseUrl, ...summary }, null, 2));
+  logStep(`Server running on http://127.0.0.1:${boundPort} — no seed data.`);
+  logStep("Run 'pnpm infra:clawdbots' instead for the full persona network.");
+  console.log(JSON.stringify({ baseUrl: `http://127.0.0.1:${boundPort}`, operatorAccountId }, null, 2));
 
   await new Promise<void>((resolve, reject) => {
     const stop = async () => {
@@ -120,7 +91,7 @@ if (isExecutedDirectly(import.meta.url)) {
   Promise.resolve(runner)
     .then((summaryOrVoid) => {
       if (summaryOrVoid) {
-        logStep("Seed complete");
+        logStep("Done (no seed data — agents are self-bootstrapping).");
         console.log(JSON.stringify(summaryOrVoid, null, 2));
       }
     })
