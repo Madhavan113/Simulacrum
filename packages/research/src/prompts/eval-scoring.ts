@@ -26,15 +26,23 @@ SCORE THESE DIMENSIONS:
 
 1. NOVELTY (weight 20%):
    - Is this saying something genuinely new vs. restating known patterns?
-   - 0-20: Restating prior findings
-   - 20-50: Incremental extension
-   - 50-75: New framing of known patterns
-   - 75-100: Genuinely novel finding
+   - 0-20:  Restating prior findings or obvious facts about prediction markets
+   - 20-40: Minor variation on well-known patterns
+   - 40-60: Incremental extension with some new angle
+   - 60-80: New framing that generates testable predictions
+   - 80-100: Genuinely novel finding with clear implications
+   Most automated research outputs should score 30-55. Score above 70 only if the finding would surprise a domain expert.
 
 2. COHERENCE (weight 20%):
    - Does methodology → findings → conclusion flow logically?
    - Are there internal contradictions?
    - Does the abstract accurately reflect the content?
+   - 0-20:  Incoherent — findings contradict each other or the conclusion
+   - 20-40: Weak — logical gaps between methodology and claims
+   - 40-60: Adequate — generally follows but with loose connections
+   - 60-80: Good — clear logical chain with minor gaps
+   - 80-100: Rigorous — every claim follows from stated evidence
+   Most automated drafts should score 40-65. Score above 75 only with tight end-to-end logical consistency.
 
 Return JSON only:
 {

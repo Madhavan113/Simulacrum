@@ -90,11 +90,17 @@ export async function advancePipeline(
 
     case "DRAFTING": {
       agent.advanceTo("REVIEWING");
-      const review = await xai.selfReview(agent.draft!);
+
+      let review = await xai.selfReview(agent.draft!);
+      if (!review) {
+        console.warn("[publication-engine] Self-review returned null, retrying once...");
+        review = await xai.selfReview(agent.draft!);
+      }
 
       if (!review) {
-        agent.advanceTo("EVALUATING");
-        return { advanced: true, stage: "EVALUATING" };
+        console.error("[publication-engine] Self-review failed after retry — blocking advancement");
+        agent.resetPipeline();
+        return { advanced: false, reason: "self-review failed after retry" };
       }
 
       if (review.score >= 70 || pipeline.revisionCount >= MAX_REVISION_CYCLES) {
@@ -112,9 +118,11 @@ export async function advancePipeline(
           focusArea: agent.draft!.focusArea,
           dataWindow: agent.draft!.dataWindow,
         });
+        agent.incrementRevision();
+      } else {
+        console.warn("[publication-engine] Revision failed — not consuming revision slot");
       }
 
-      agent.incrementRevision();
       pipeline.reviewCritiques = review.critiques;
       return { advanced: true, stage: "REVIEWING" };
     }

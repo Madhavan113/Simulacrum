@@ -100,7 +100,13 @@ function scoreStatisticalSignificance(publication: ResearchPublication): EvalDim
   let calibrated = 0;
   for (const finding of publication.findings) {
     const refCount = finding.onChainRefs.length;
-    if (finding.confidence <= 0.5 || refCount >= 1) {
+    if (finding.confidence <= 0.3) {
+      calibrated += 1;
+    } else if (finding.confidence <= 0.5 && refCount >= 1) {
+      calibrated += 1;
+    } else if (finding.confidence <= 0.7 && refCount >= 2) {
+      calibrated += 1;
+    } else if (finding.confidence > 0.7 && refCount >= 3) {
       calibrated += 1;
     }
   }

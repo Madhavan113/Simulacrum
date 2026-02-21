@@ -16,6 +16,16 @@ STRUCTURED REVIEW CHECKLIST — evaluate each point:
 7. Is there anything claimed without evidence?
 8. Is the sample size sufficient for the claims made?
 
+SCORING RUBRIC — anchor your score to these bands:
+  0-20:  Fundamentally flawed — missing data, fabricated references, incoherent argument
+ 20-40:  Major issues — multiple unsupported claims, poor methodology, contradictions
+ 40-55:  Below average — some valid points but significant gaps in evidence or logic
+ 55-70:  Acceptable — adequate evidence and methodology with notable weaknesses
+ 70-85:  Good — solid evidence, clear methodology, minor issues only
+ 85-100: Excellent — comprehensive evidence, rigorous methodology, honest limitations
+
+Most drafts from a single automated pipeline should score 40-65. Scores above 75 require exceptional evidence depth. Do NOT default to high scores.
+
 Return JSON only:
 {
   "critiques": ["specific critique 1", "specific critique 2"],

@@ -16,7 +16,7 @@ import { buildAnalysisPrompt } from "./prompts/analysis.js";
 import { buildHypothesisPrompt } from "./prompts/hypothesis.js";
 import { buildSynthesisPrompt } from "./prompts/synthesis.js";
 import { buildReviewPrompt } from "./prompts/review.js";
-import { buildEvalGenerationPrompt } from "./prompts/eval-generation.js";
+import { buildRevisionMessages } from "./prompts/revision.js";
 import { buildEvalScoringPrompt } from "./prompts/eval-scoring.js";
 
 const DEFAULT_MODEL = "grok-4-1-fast-reasoning";
@@ -26,14 +26,36 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 
 function stripMarkdownFences(raw: string): string {
   const trimmed = raw.trim();
-  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
-  return fenceMatch ? fenceMatch[1]!.trim() : trimmed;
+
+  // Anchored match: entire response is a fenced block
+  const fullMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  if (fullMatch) return fullMatch[1]!.trim();
+
+  // Reasoning-model match: chain-of-thought preamble before the JSON fence
+  const innerMatch = trimmed.match(/```(?:json)?\s*\n([\s\S]*?)\n\s*```/);
+  if (innerMatch) return innerMatch[1]!.trim();
+
+  // Last resort: extract the first top-level JSON object or array
+  const jsonStart = trimmed.search(/[\[{]/);
+  if (jsonStart >= 0) {
+    const candidate = trimmed.slice(jsonStart);
+    const endChar = candidate[0] === "[" ? "]" : "}";
+    const endIdx = candidate.lastIndexOf(endChar);
+    if (endIdx > 0) return candidate.slice(0, endIdx + 1);
+  }
+
+  return trimmed;
 }
 
 function parseJson<T>(raw: string): T | null {
+  const cleaned = stripMarkdownFences(raw);
   try {
-    return JSON.parse(stripMarkdownFences(raw)) as T;
-  } catch {
+    return JSON.parse(cleaned) as T;
+  } catch (err) {
+    const preview = cleaned.slice(0, 200).replace(/\n/g, "\\n");
+    console.error(
+      `[xai-engine] JSON parse failed: ${err instanceof Error ? err.message : err} | preview: "${preview}"`
+    );
     return null;
   }
 }
@@ -115,32 +137,10 @@ export class XaiEngine {
     publication: Partial<ResearchPublication>,
     review: ReviewResult
   ): Promise<Partial<ResearchPublication> | null> {
-    const messages = [
-      {
-        role: "system" as const,
-        content: "You are a rigorous research editor. Revise the publication draft to address the critiques. Return the revised publication as JSON with the same schema.",
-      },
-      {
-        role: "user" as const,
-        content: JSON.stringify({
-          draft: publication,
-          critiques: review.critiques,
-          suggestions: review.suggestions,
-        }),
-      },
-    ];
+    const messages = buildRevisionMessages(publication, review);
     const raw = await this.#chatCompletionMessages("Revision", messages, 0.4);
     if (!raw) return null;
     return parseJson<Partial<ResearchPublication>>(raw);
-  }
-
-  async generateEvalCriteria(
-    publication: ResearchPublication
-  ): Promise<Record<string, { description: string; tests: string[] }> | null> {
-    const prompt = buildEvalGenerationPrompt(publication);
-    const raw = await this.#chatCompletion("EvalGeneration", prompt, 0.3);
-    if (!raw) return null;
-    return parseJson(raw);
   }
 
   async scorePublication(
