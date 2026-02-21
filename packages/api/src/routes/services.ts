@@ -84,6 +84,13 @@ export function createServicesRouter(eventBus: ApiEventBus, clawdbotNetwork?: Cl
     });
   });
 
+  router.get("/requests", (_request, response) => {
+    const store = getServiceStore();
+    response.json({
+      requests: Array.from(store.requests.values())
+    });
+  });
+
   router.get("/:serviceId", (request, response) => {
     const store = getServiceStore();
     const service = store.services.get(request.params.serviceId);
