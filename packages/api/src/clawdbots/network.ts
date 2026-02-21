@@ -2615,114 +2615,122 @@ export class ClawdbotNetwork {
     const reputationByAccount = this.buildReputationMap();
     const marketSentiment = this.buildMarketSentiment();
 
+    const eligible: RuntimeBot[] = [];
     for (const runtime of this.#runtimeBots.values()) {
-      if (!this.canExecuteHostedAction(runtime.agent.id)) {
-        continue;
-      }
+      if (!this.canExecuteHostedAction(runtime.agent.id)) continue;
 
       const failures = this.#consecutiveFailures.get(runtime.agent.id) ?? 0;
       if (failures >= 5) {
         const skipTicks = Math.min(Math.floor(failures / 2), 5);
-        if (this.#tickCount % skipTicks !== 0) {
-          continue;
-        }
+        if (this.#tickCount % skipTicks !== 0) continue;
       }
 
       const lastActionTick = this.#lastNonWaitTick.get(runtime.agent.id) ?? 0;
-      const ticksSinceAction = this.#tickCount - lastActionTick;
+      if (this.#tickCount - lastActionTick < this.#minTicksBetweenActions) continue;
 
-      if (ticksSinceAction < this.#minTicksBetweenActions) {
-        continue;
+      eligible.push(runtime);
+    }
+
+    if (eligible.length === 0) return;
+
+    await Promise.allSettled(
+      eligible.map((runtime) => this.#runSingleBotTick(runtime, now, reputationByAccount, marketSentiment))
+    );
+  }
+
+  async #runSingleBotTick(
+    runtime: RuntimeBot,
+    now: Date,
+    reputationByAccount: Record<string, number>,
+    marketSentiment: Record<string, MarketSentiment>
+  ): Promise<void> {
+    const fetched = await runtime.adapter.handleToolCall({
+      name: "fetch_markets",
+      args: {}
+    });
+    const markets = (Array.isArray(fetched) ? fetched : []) as MarketSnapshot[];
+    const derivativesContext = this.buildDerivativesContext(runtime.wallet.accountId, markets);
+    const recentActions = this.#recentActionsByBot.get(runtime.agent.id);
+    const agentActivityFeed = this.buildAgentActivityFeed(runtime.agent.id) || undefined;
+    const serviceCatalog = this.buildServiceCatalog(runtime.wallet.accountId) || undefined;
+    const taskBoard = this.buildTaskBoard(runtime.wallet.accountId) || undefined;
+
+    const searchContext = this.#trendingContext || undefined;
+
+    const previousGoal = this.#goalsByBotId.get(runtime.agent.id);
+    const lastFailure = previousGoal?.status === "FAILED" ? previousGoal : undefined;
+    const goal = await this.ensureGoal(runtime, markets, reputationByAccount, marketSentiment, lastFailure, derivativesContext, searchContext, recentActions, agentActivityFeed, serviceCatalog, taskBoard);
+    const action = await this.cognitionFor(runtime).decideAction({
+      goal,
+      bot: runtime.agent,
+      markets,
+      reputationByAccount,
+      marketSentiment,
+      lastFailedGoal: lastFailure,
+      personaPrompt: runtime.personaPrompt,
+      derivativesContext,
+      searchContext,
+      agentActivityFeed,
+      serviceCatalog,
+      taskBoard
+    });
+
+    this.#eventBus.publish("clawdbot.goal.updated", {
+      botId: runtime.agent.id,
+      goalId: goal.id,
+      status: "IN_PROGRESS",
+      actionType: action.type,
+      demo: false
+    });
+
+    try {
+      await this.executePlannedAction(runtime, action, markets, now, reputationByAccount, marketSentiment);
+      if (action.type !== "WAIT") {
+        this.recordHostedAction(runtime.agent.id);
+        this.trackBotAction(runtime.agent.id, action.type, action.rationale);
+        if (action.rationale) {
+          this.postMessage(action.rationale, runtime.agent.id);
+        }
       }
-
-      const fetched = await runtime.adapter.handleToolCall({
-        name: "fetch_markets",
-        args: {}
-      });
-      const markets = (Array.isArray(fetched) ? fetched : []) as MarketSnapshot[];
-      const derivativesContext = this.buildDerivativesContext(runtime.wallet.accountId, markets);
-      const recentActions = this.#recentActionsByBot.get(runtime.agent.id);
-      const agentActivityFeed = this.buildAgentActivityFeed(runtime.agent.id) || undefined;
-      const serviceCatalog = this.buildServiceCatalog(runtime.wallet.accountId) || undefined;
-      const taskBoard = this.buildTaskBoard(runtime.wallet.accountId) || undefined;
-
-      let searchContext = this.#trendingContext || undefined;
-
-      const previousGoal = this.#goalsByBotId.get(runtime.agent.id);
-      const lastFailure = previousGoal?.status === "FAILED" ? previousGoal : undefined;
-      const goal = await this.ensureGoal(runtime, markets, reputationByAccount, marketSentiment, lastFailure, derivativesContext, searchContext, recentActions, agentActivityFeed, serviceCatalog, taskBoard);
-      const action = await this.cognitionFor(runtime).decideAction({
-        goal,
-        bot: runtime.agent,
-        markets,
-        reputationByAccount,
-        marketSentiment,
-        lastFailedGoal: lastFailure,
-        personaPrompt: runtime.personaPrompt,
-        derivativesContext,
-        searchContext,
-        agentActivityFeed,
-        serviceCatalog,
-        taskBoard
-      });
-
-      this.#eventBus.publish("clawdbot.goal.updated", {
+      const completedAt = new Date().toISOString();
+      const completed: ClawdbotGoal = {
+        ...goal,
+        status: "COMPLETED",
+        updatedAt: completedAt,
+        completedAt
+      };
+      this.#goalsByBotId.set(runtime.agent.id, completed);
+      this.#consecutiveFailures.delete(runtime.agent.id);
+      this.#eventBus.publish("clawdbot.goal.completed", {
         botId: runtime.agent.id,
-        goalId: goal.id,
-        status: "IN_PROGRESS",
-        actionType: action.type,
-        demo: false
+        goal: completed,
+        actionType: action.type
       });
-
-      try {
-        await this.executePlannedAction(runtime, action, markets, now, reputationByAccount, marketSentiment);
-        if (action.type !== "WAIT") {
-          this.recordHostedAction(runtime.agent.id);
-          this.trackBotAction(runtime.agent.id, action.type, action.rationale);
-          if (action.rationale) {
-            this.postMessage(action.rationale, runtime.agent.id);
-          }
-        }
-        const completedAt = new Date().toISOString();
-        const completed: ClawdbotGoal = {
-          ...goal,
-          status: "COMPLETED",
-          updatedAt: completedAt,
-          completedAt
-        };
-        this.#goalsByBotId.set(runtime.agent.id, completed);
-        this.#consecutiveFailures.delete(runtime.agent.id);
-        this.#eventBus.publish("clawdbot.goal.completed", {
-          botId: runtime.agent.id,
-          goal: completed,
-          actionType: action.type
-        });
-      } catch (error) {
-        const parts: string[] = [];
-        let current: unknown = error;
-        while (current instanceof Error) {
-          parts.push(current.message);
-          current = current.cause;
-        }
-        if (current !== undefined && current !== null && !(current instanceof Error)) {
-          parts.push(String(current));
-        }
-        const message = parts.join(" → ");
-        console.error(`[clawdbot] Goal failed for ${runtime.agent.name}: ${message}`);
-        const failedAt = new Date().toISOString();
-        const failed: ClawdbotGoal = {
-          ...goal,
-          status: "FAILED",
-          updatedAt: failedAt,
-          error: error instanceof Error ? error.message : String(error)
-        };
-        this.#goalsByBotId.set(runtime.agent.id, failed);
-        this.#consecutiveFailures.set(runtime.agent.id, (this.#consecutiveFailures.get(runtime.agent.id) ?? 0) + 1);
-        this.#eventBus.publish("clawdbot.goal.failed", {
-          botId: runtime.agent.id,
-          goal: failed
-        });
+    } catch (error) {
+      const parts: string[] = [];
+      let current: unknown = error;
+      while (current instanceof Error) {
+        parts.push(current.message);
+        current = current.cause;
       }
+      if (current !== undefined && current !== null && !(current instanceof Error)) {
+        parts.push(String(current));
+      }
+      const message = parts.join(" → ");
+      console.error(`[clawdbot] Goal failed for ${runtime.agent.name}: ${message}`);
+      const failedAt = new Date().toISOString();
+      const failed: ClawdbotGoal = {
+        ...goal,
+        status: "FAILED",
+        updatedAt: failedAt,
+        error: error instanceof Error ? error.message : String(error)
+      };
+      this.#goalsByBotId.set(runtime.agent.id, failed);
+      this.#consecutiveFailures.set(runtime.agent.id, (this.#consecutiveFailures.get(runtime.agent.id) ?? 0) + 1);
+      this.#eventBus.publish("clawdbot.goal.failed", {
+        botId: runtime.agent.id,
+        goal: failed
+      });
     }
   }
 
