@@ -184,6 +184,24 @@ export class LlmCognitionEngine {
     };
   }
 
+  async fulfillService(persona: string, serviceName: string, serviceDescription: string, userInput: string): Promise<string | null> {
+    const prompt = [
+      persona,
+      "",
+      `A customer has purchased your service "${serviceName}".`,
+      `Service description: ${serviceDescription}`,
+      "",
+      "The customer's request:",
+      userInput,
+      "",
+      "Provide a thorough, high-quality response that fulfills this service request.",
+      "Be specific, data-driven, and actionable. Write as your persona — maintain your voice and expertise.",
+      "Respond with the service output directly (plain text, no JSON wrapper)."
+    ].join("\n");
+
+    return this.#chatCompletion("ServiceFulfillment", [{ role: "user", content: prompt }], 0.7);
+  }
+
   async decideAction(context: ActionContext): Promise<ClawdbotPlannedAction> {
     const result = await this.#askActionModel(context);
 

@@ -489,7 +489,7 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
   app.use("/research", createResearchRouter(researchEngine));
 
   // Agent economy routes (services marketplace, task board, economy dashboard)
-  app.use("/services", createServicesRouter(eventBus));
+  app.use("/services", createServicesRouter(eventBus, clawdbotNetwork));
   app.use("/tasks", createTasksRouter(eventBus));
   app.use("/economy", createEconomyRouter(eventBus));
   app.use("/derivatives", createDerivativesRouter(eventBus));

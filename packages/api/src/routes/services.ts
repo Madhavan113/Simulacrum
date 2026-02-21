@@ -13,6 +13,7 @@ import {
 } from "@simulacrum/services";
 
 import type { ApiEventBus } from "../events.js";
+import type { ClawdbotNetwork } from "../clawdbots/network.js";
 import { validateBody } from "../middleware/validation.js";
 
 const registerServiceSchema = z.object({
@@ -63,7 +64,12 @@ const reviewServiceSchema = z.object({
   comment: z.string().min(1)
 });
 
-export function createServicesRouter(eventBus: ApiEventBus): Router {
+const buyServiceSchema = z.object({
+  input: z.string().min(1),
+  payerAccountId: z.string().optional()
+});
+
+export function createServicesRouter(eventBus: ApiEventBus, clawdbotNetwork?: ClawdbotNetwork): Router {
   const router = Router();
 
   router.get("/", (_request, response) => {
@@ -223,6 +229,73 @@ export function createServicesRouter(eventBus: ApiEventBus): Router {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         response.status(400).json({ error: message });
+      }
+    }
+  );
+
+  router.post(
+    "/:serviceId/buy",
+    validateBody(buyServiceSchema),
+    async (request, response) => {
+      const store = getServiceStore();
+      const service = store.services.get(request.params.serviceId);
+
+      if (!service) {
+        response.status(404).json({ error: `Service ${request.params.serviceId} not found` });
+        return;
+      }
+
+      if (service.status !== "ACTIVE") {
+        response.status(400).json({ error: `Service is ${service.status}, not available for purchase.` });
+        return;
+      }
+
+      if (!clawdbotNetwork) {
+        response.status(503).json({ error: "MoltBook fulfillment unavailable — clawdbot network not running." });
+        return;
+      }
+
+      const requesterAccountId = request.body.payerAccountId || process.env.HEDERA_ACCOUNT_ID || "demo";
+
+      try {
+        const serviceRequest = await requestService({
+          serviceId: service.id,
+          requesterAccountId,
+          input: request.body.input
+        });
+        eventBus.publish("service.requested", serviceRequest);
+
+        await acceptRequest({
+          serviceId: service.id,
+          requestId: serviceRequest.id,
+          providerAccountId: service.providerAccountId
+        });
+        eventBus.publish("service.accepted", serviceRequest);
+
+        const output = await clawdbotNetwork.fulfillServiceRequest(
+          service.providerAccountId,
+          service.name,
+          service.description,
+          request.body.input
+        );
+
+        const completed = await completeRequest({
+          serviceId: service.id,
+          requestId: serviceRequest.id,
+          providerAccountId: service.providerAccountId,
+          output
+        });
+        eventBus.publish("service.completed", completed);
+
+        response.json({
+          request: completed,
+          output,
+          service: { id: service.id, name: service.name, providerAccountId: service.providerAccountId },
+          moltbook: true
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        response.status(500).json({ error: message });
       }
     }
   );

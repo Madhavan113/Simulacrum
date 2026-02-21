@@ -919,6 +919,39 @@ export class ClawdbotNetwork {
     return this.postMessage(text, botId);
   }
 
+  async fulfillServiceRequest(
+    providerAccountId: string,
+    serviceName: string,
+    serviceDescription: string,
+    userInput: string
+  ): Promise<string> {
+    let matchedRuntime: RuntimeBot | undefined;
+    for (const runtime of this.#runtimeBots.values()) {
+      if (runtime.wallet.accountId === providerAccountId) {
+        matchedRuntime = runtime;
+        break;
+      }
+    }
+
+    if (!matchedRuntime) {
+      throw new Error(`No active bot found for provider account ${providerAccountId}.`);
+    }
+
+    const persona = matchedRuntime.personaPrompt
+      ?? `You are "${matchedRuntime.agent.name}", an autonomous agent on the Simulacrum platform.`;
+
+    const cognition = this.cognitionFor(matchedRuntime);
+    const output = await cognition.fulfillService(persona, serviceName, serviceDescription, userInput);
+
+    if (!output) {
+      throw new Error(`${matchedRuntime.agent.name} could not generate a response — LLM unavailable.`);
+    }
+
+    this.postMessage(`[MoltBook] Fulfilled "${serviceName}" request: "${userInput.slice(0, 80)}..."`, matchedRuntime.agent.id);
+
+    return output;
+  }
+
   async createMarketAsBot(
     botId: string,
     input: Omit<CreateClawdbotEventMarketInput, "creatorBotId">

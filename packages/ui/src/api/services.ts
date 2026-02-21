@@ -42,9 +42,20 @@ export interface ServiceReview {
   createdAt: string
 }
 
+export interface MoltBookBuyResult {
+  request: ServiceRequest
+  output: string
+  service: { id: string; name: string; providerAccountId: string }
+  moltbook: true
+}
+
 export const servicesApi = {
   list:     ()            => apiFetch<{ services: Service[] }>('/services').then(r => r.services),
   get:      (id: string)  => apiFetch<{ service: Service }>(`/services/${id}`).then(r => r.service),
   requests: ()            => apiFetch<{ requests: ServiceRequest[] }>('/services/requests').then(r => r.requests),
   reviews:  (serviceId: string) => apiFetch<{ reviews: ServiceReview[] }>(`/services/${serviceId}/reviews`).then(r => r.reviews),
+  buy:      (serviceId: string, input: string) => apiFetch<MoltBookBuyResult>(`/services/${serviceId}/buy`, {
+    method: 'POST',
+    body: JSON.stringify({ input }),
+  }),
 }

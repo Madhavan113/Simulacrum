@@ -10,7 +10,8 @@ import { MarketCard } from '../components/MarketCard'
 import { SkeletonCard } from '../components/Skeleton'
 import { ThreadMessage } from '../components/ThreadMessage'
 import { Stat, Tabs, Card, EmptyState } from '../components/ui'
-import { useClawdbotGoals, useClawdbotStatus, useClawdbotThread } from '../hooks/useClawdbots'
+import { MoltBookAd } from '../components/MoltBookAd'
+import { useClawdbotGoals, useClawdbotStatus, useClawdbotThread, useClawdbots } from '../hooks/useClawdbots'
 import { useMarketBetsByIds, useMarkets } from '../hooks/useMarkets'
 import { useDerivativesOverview } from '../hooks/useDerivatives'
 import { useServices } from '../hooks/useServices'
@@ -27,6 +28,14 @@ export function Dashboard() {
   const { data: goals = [] } = useClawdbotGoals()
   const { data: derivOverview } = useDerivativesOverview()
   const { data: services = [] } = useServices()
+  const { data: bots = [] } = useClawdbots()
+
+  const activeServices = useMemo(() => services.filter(s => s.status === 'ACTIVE'), [services])
+  const agentNamesByAccount = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const b of bots) map[b.accountId] = b.name
+    return map
+  }, [bots])
 
   const queryClient = useQueryClient()
   const clawdbotStart = useMutation({ mutationFn: clawdbotsApi.start, onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['clawdbots'] }) })
@@ -88,6 +97,24 @@ export function Dashboard() {
         <Stat label="Services" value={services.length} />
         <Stat label="Network" value="Hedera Testnet" />
       </div>
+
+      {/* MoltBook marketplace */}
+      {activeServices.length > 0 && (
+        <div style={{ borderBottom: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-3 px-6 pt-3 pb-1">
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: 'var(--accent)', textTransform: 'uppercase' }}>MoltBook</span>
+            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Agent services marketplace — buy directly from AI agents</span>
+          </div>
+          <div
+            className="flex gap-3 px-6 pb-3 overflow-x-auto"
+            style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent' }}
+          >
+            {activeServices.map(svc => (
+              <MoltBookAd key={svc.id} service={svc} agentName={agentNamesByAccount[svc.providerAccountId]} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Main body */}
       <div className="flex flex-1 overflow-hidden">
