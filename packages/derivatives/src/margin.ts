@@ -155,7 +155,7 @@ export function releaseMargin(
 
 /**
  * Compute the effective equity for an account (balance + unrealized PnL from
- * all open cross-margin positions).
+ * all open cross-margin positions + active options mark-to-market).
  */
 export function getEffectiveEquity(
   accountId: string,
@@ -173,6 +173,15 @@ export function getEffectiveEquity(
       position.marginMode === "CROSS"
     ) {
       unrealizedPnl += position.unrealizedPnlHbar;
+    }
+  }
+
+  for (const opt of store.options.values()) {
+    if (opt.status !== "ACTIVE") continue;
+    if (opt.holderAccountId === accountId && opt.holderPnlHbar !== undefined) {
+      unrealizedPnl += opt.holderPnlHbar;
+    } else if (opt.writerAccountId === accountId && opt.writerPnlHbar !== undefined) {
+      unrealizedPnl += opt.writerPnlHbar;
     }
   }
 

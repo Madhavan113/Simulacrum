@@ -127,6 +127,19 @@ export interface OptionContract {
   exercisedAt?: string;
   settlementHbar?: number;
   topicTransactionId?: string;
+
+  /** Current theoretical value from logit-normal Black-Scholes repricing. */
+  currentPremiumHbar?: number;
+  /** Current underlying mark price used in the last repricing. */
+  currentMarkPrice?: number;
+  /** Remaining time to expiry in fractional days. */
+  timeToExpiryDays?: number;
+  /** Holder unrealized PnL: currentPremium − premiumPaid. */
+  holderPnlHbar?: number;
+  /** Writer unrealized PnL: premiumReceived − currentPremium. */
+  writerPnlHbar?: number;
+  /** ISO timestamp of the last mark-to-market refresh. */
+  lastRefreshedAt?: string;
 }
 
 export interface WriteOptionInput {

@@ -1,4 +1,6 @@
-import { createTopic, submitMessage, validateNonEmptyString } from "@simulacrum/core";
+import { randomUUID } from "node:crypto";
+
+import { createTopic, submitMessage, transferHbar, validateNonEmptyString } from "@simulacrum/core";
 import type { Client } from "@hashgraph/sdk";
 
 import { getMarketStore, persistMarketStore, type MarketStore } from "./store.js";
@@ -7,12 +9,15 @@ import {
   type Market,
   type MarketCurveState,
   type MarketLiquidityModel,
+  type MarketOrder,
+  type SeedOrder,
   MarketError
 } from "./types.js";
 
 interface CreateMarketDependencies {
   createTopic: typeof createTopic;
   submitMessage: typeof submitMessage;
+  transferHbar: typeof transferHbar;
   now: () => Date;
 }
 

@@ -46,7 +46,7 @@ import {
   getPositionsForAccount,
   type OptionContract
 } from "@simulacrum/derivatives";
-import { registerService, requestService, getServiceStore } from "@simulacrum/services";
+import { registerService, requestService, acceptRequest, completeRequest, getServiceStore } from "@simulacrum/services";
 import { createTask, bidOnTask, getTaskStore } from "@simulacrum/tasks";
 
 import type { ApiEvent, ApiEventBus } from "../events.js";
@@ -3090,21 +3090,112 @@ export class ClawdbotNetwork {
           return;
         }
 
+        const svcStore = getServiceStore();
+        const targetSvc = svcStore.services.get(serviceId);
+        if (!targetSvc || targetSvc.status !== "ACTIVE") {
+          return;
+        }
+
+        if (targetSvc.priceHbar > runtime.agent.bankrollHbar) {
+          return;
+        }
+
         try {
           const serviceRequest = await requestService({
             serviceId,
             requesterAccountId: runtime.wallet.accountId,
             input
-          });
+          }, { client: this.getClient(runtime.wallet) });
+
+          runtime.agent.adjustBankroll(-targetSvc.priceHbar);
+
           this.#eventBus.publish("service.requested", {
             ...serviceRequest,
             botId: runtime.agent.id,
             rationale: action.rationale
           });
+          this.persistReputationChange(runtime, 3, `Requested service: ${targetSvc.name}`);
         } catch (error) {
           this.#eventBus.publish("clawdbot.action.error", {
             botId: runtime.agent.id,
             action: "REQUEST_SERVICE",
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+        return;
+      }
+      case "BUY_SERVICE": {
+        const serviceId = parseNonEmptyString(action.serviceId, "");
+        const input = parseNonEmptyString(action.serviceInput, "");
+
+        if (!serviceId || !input) {
+          return;
+        }
+
+        const buyStore = getServiceStore();
+        const buySvc = buyStore.services.get(serviceId);
+        if (!buySvc || buySvc.status !== "ACTIVE") {
+          return;
+        }
+
+        if (buySvc.providerAccountId === runtime.wallet.accountId) {
+          return;
+        }
+
+        if (buySvc.priceHbar > runtime.agent.bankrollHbar) {
+          return;
+        }
+
+        try {
+          const buyRequest = await requestService({
+            serviceId,
+            requesterAccountId: runtime.wallet.accountId,
+            input
+          }, { client: this.getClient(runtime.wallet) });
+
+          runtime.agent.adjustBankroll(-buySvc.priceHbar);
+
+          await acceptRequest({
+            serviceId,
+            requestId: buyRequest.id,
+            providerAccountId: buySvc.providerAccountId
+          });
+
+          const output = await this.fulfillServiceRequest(
+            buySvc.providerAccountId,
+            buySvc.name,
+            buySvc.description,
+            input
+          );
+
+          await completeRequest({
+            serviceId,
+            requestId: buyRequest.id,
+            providerAccountId: buySvc.providerAccountId,
+            output
+          });
+
+          this.postMessage(
+            `Bought "${buySvc.name}" from ${buySvc.providerAccountId} for ${buySvc.priceHbar} HBAR — "${input.slice(0, 80)}"`,
+            runtime.agent.id
+          );
+
+          this.#eventBus.publish("service.bought", {
+            requestId: buyRequest.id,
+            serviceId,
+            serviceName: buySvc.name,
+            buyerAccountId: runtime.wallet.accountId,
+            providerAccountId: buySvc.providerAccountId,
+            priceHbar: buySvc.priceHbar,
+            botId: runtime.agent.id,
+            rationale: action.rationale,
+            output: output.slice(0, 200)
+          });
+          this.persistReputationChange(runtime, 5, `Bought service: ${buySvc.name}`);
+        } catch (error) {
+          this.#eventBus.publish("clawdbot.action.error", {
+            botId: runtime.agent.id,
+            action: "BUY_SERVICE",
             error: error instanceof Error ? error.message : String(error)
           });
         }

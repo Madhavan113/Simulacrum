@@ -48,6 +48,8 @@ export {
   getAvailableOptions,
   getOption,
   getOptionsForMarket,
+  refreshAllOptions,
+  refreshOption,
   writeOption,
   type OptionsOperationOptions
 } from "./options.js";

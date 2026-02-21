@@ -54,8 +54,8 @@ export const servicesApi = {
   get:      (id: string)  => apiFetch<{ service: Service }>(`/services/${id}`).then(r => r.service),
   requests: ()            => apiFetch<{ requests: ServiceRequest[] }>('/services/requests').then(r => r.requests),
   reviews:  (serviceId: string) => apiFetch<{ reviews: ServiceReview[] }>(`/services/${serviceId}/reviews`).then(r => r.reviews),
-  buy:      (serviceId: string, input: string, payerAccountId: string) => apiFetch<MoltBookBuyResult>(`/services/${serviceId}/buy`, {
+  buy:      (serviceId: string, input: string, payerAccountId: string, privateKey?: string, privateKeyType?: string) => apiFetch<MoltBookBuyResult>(`/services/${serviceId}/buy`, {
     method: 'POST',
-    body: JSON.stringify({ input, payerAccountId }),
+    body: JSON.stringify({ input, payerAccountId, ...(privateKey ? { privateKey, privateKeyType: privateKeyType ?? 'der' } : {}) }),
   }),
 }

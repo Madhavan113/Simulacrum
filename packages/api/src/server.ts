@@ -27,6 +27,8 @@ import {
   type ClawdbotNetwork,
   type ClawdbotNetworkOptions
 } from "./clawdbots/network.js";
+import { runFundingSettlementSweep } from "./derivatives/settlement.js";
+import { runOptionsSweep } from "./derivatives/options-sweep.js";
 import { createEventBus, type ApiEventBus } from "./events.js";
 import { createAgentOnlyModeGuard } from "./middleware/agent-auth.js";
 import { runMarketLifecycleSweep } from "./markets/lifecycle.js";
@@ -321,6 +323,8 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
       : null;
   const legacyRoutesEnabled = !agentPlatform.enabled || agentPlatform.legacyRoutesEnabled;
   let marketLifecycleInterval: ReturnType<typeof setInterval> | null = null;
+  let fundingSettlementInterval: ReturnType<typeof setInterval> | null = null;
+  let optionsSweepInterval: ReturnType<typeof setInterval> | null = null;
 
   if (options.seedAgents) {
     registry.add(
@@ -591,6 +595,28 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
         }, lifecycleTickMs);
       }
 
+      // ── Funding Settlement Scheduler ──
+      const envFundingTickMs = Number(process.env.FUNDING_SETTLEMENT_TICK_MS);
+      const fundingTickMs = Number.isFinite(envFundingTickMs) && envFundingTickMs > 0
+        ? envFundingTickMs
+        : 3_600_000; // 1 hour default
+
+      runFundingSettlementSweep({ eventBus });
+      fundingSettlementInterval = setInterval(() => {
+        runFundingSettlementSweep({ eventBus });
+      }, fundingTickMs);
+
+      // ── Options Mark-to-Market Scheduler ──
+      const envOptionsSweepMs = Number(process.env.OPTIONS_SWEEP_TICK_MS);
+      const optionsSweepMs = Number.isFinite(envOptionsSweepMs) && envOptionsSweepMs > 0
+        ? envOptionsSweepMs
+        : 15_000; // 15 seconds default
+
+      runOptionsSweep({ eventBus });
+      optionsSweepInterval = setInterval(() => {
+        runOptionsSweep({ eventBus });
+      }, optionsSweepMs);
+
       const address = httpServer.address();
 
       if (typeof address === "object" && address && typeof address.port === "number") {
@@ -600,6 +626,14 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
       return port;
     },
     async stop(): Promise<void> {
+      if (optionsSweepInterval) {
+        clearInterval(optionsSweepInterval);
+        optionsSweepInterval = null;
+      }
+      if (fundingSettlementInterval) {
+        clearInterval(fundingSettlementInterval);
+        fundingSettlementInterval = null;
+      }
       if (marketLifecycleInterval) {
         clearInterval(marketLifecycleInterval);
         marketLifecycleInterval = null;

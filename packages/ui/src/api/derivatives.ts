@@ -38,6 +38,12 @@ export interface OptionContract {
   createdAt: string
   exercisedAt?: string
   settlementHbar?: number
+  currentPremiumHbar?: number
+  currentMarkPrice?: number
+  timeToExpiryDays?: number
+  holderPnlHbar?: number
+  writerPnlHbar?: number
+  lastRefreshedAt?: string
 }
 
 export interface MarginAccount {

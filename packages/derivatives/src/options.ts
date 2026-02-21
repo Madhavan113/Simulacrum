@@ -18,7 +18,7 @@ import type { Client } from "@hashgraph/sdk";
 import type { Market } from "@simulacrum/markets";
 
 import { lockMargin, releaseMargin } from "./margin.js";
-import { getMarkPrice } from "./pricing.js";
+import { computeMarkPrice, getMarkPrice } from "./pricing.js";
 import { getDerivativesStore, persistDerivativesStore, type DerivativesStore } from "./store.js";
 import {
   DerivativesError,
@@ -342,6 +342,91 @@ export function expireOptions(
   }
 
   return expired;
+}
+
+/**
+ * Reprice a single active option using the logit-normal Black-Scholes model
+ * and the current mark price oracle.  Updates all mark-to-market fields on the
+ * contract and persists the result.
+ *
+ * This is the options analogue of `refreshPosition()` for perpetuals.
+ */
+export function refreshOption(
+  contract: OptionContract,
+  market: Market,
+  options: OptionsOperationOptions = {}
+): OptionContract {
+  if (contract.status !== "ACTIVE") return contract;
+
+  const store = getDerivativesStore(options.store);
+  const now = (options.now ?? (() => new Date()))();
+
+  const expiryMs = Date.parse(contract.expiresAt);
+  const remainingMs = expiryMs - now.getTime();
+
+  if (remainingMs <= 0) {
+    return contract;
+  }
+
+  const snapshot = computeMarkPrice(market, contract.outcome, undefined, {
+    store,
+    now: options.now
+  });
+
+  const timeToExpiryDays = remainingMs / 86_400_000;
+
+  const currentPremium = Math.max(
+    0,
+    estimateOptionPremium(
+      snapshot.markPrice,
+      contract.strikePrice,
+      timeToExpiryDays,
+      contract.optionType
+    )
+  );
+
+  const currentPremiumHbar = Number((currentPremium * contract.sizeHbar).toFixed(8));
+
+  contract.currentPremiumHbar = currentPremiumHbar;
+  contract.currentMarkPrice = snapshot.markPrice;
+  contract.timeToExpiryDays = Number(timeToExpiryDays.toFixed(4));
+  contract.lastRefreshedAt = now.toISOString();
+
+  if (contract.holderAccountId) {
+    contract.holderPnlHbar = Number((currentPremiumHbar - contract.premiumHbar).toFixed(8));
+    contract.writerPnlHbar = Number((contract.premiumHbar - currentPremiumHbar).toFixed(8));
+  } else {
+    contract.holderPnlHbar = undefined;
+    contract.writerPnlHbar = undefined;
+  }
+
+  return contract;
+}
+
+/**
+ * Refresh mark-to-market on all active options for a given market.
+ * Returns the list of contracts that were repriced.
+ */
+export function refreshAllOptions(
+  market: Market,
+  options: OptionsOperationOptions = {}
+): OptionContract[] {
+  const store = getDerivativesStore(options.store);
+  const refreshed: OptionContract[] = [];
+
+  for (const contract of store.options.values()) {
+    if (contract.marketId !== market.id) continue;
+    if (contract.status !== "ACTIVE") continue;
+
+    refreshOption(contract, market, options);
+    refreshed.push(contract);
+  }
+
+  if (refreshed.length > 0) {
+    persistDerivativesStore(store);
+  }
+
+  return refreshed;
 }
 
 export function getOption(

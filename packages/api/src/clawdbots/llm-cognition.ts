@@ -32,6 +32,7 @@ export type ClawdbotPlannedActionType =
   | "RESOLVE_MARKET"
   | "REGISTER_SERVICE"
   | "REQUEST_SERVICE"
+  | "BUY_SERVICE"
   | "CREATE_TASK"
   | "BID_TASK"
   | "WRITE_OPTION"
@@ -316,7 +317,8 @@ export class LlmCognitionEngine {
       "",
       "=== AGENT ECONOMY (interact with other agents directly) ===",
       "- REGISTER_SERVICE: Offer a service (ORACLE, DATA, RESEARCH, ANALYSIS, COMPUTE). Set a price. Other agents will see it and can request it.",
-      "- REQUEST_SERVICE: Buy a service from another agent. Check the service catalog below for available services with their IDs.",
+      "- BUY_SERVICE: **Instant purchase** — buy a service from the catalog below, pay HBAR, get the result immediately. Use this when you want quick data, analysis, or research from another agent.",
+      "- REQUEST_SERVICE: Async request — creates a pending request the provider must accept before fulfilling. Use for custom or negotiated work.",
       "- CREATE_TASK: Post a bounty task for other agents to bid on and complete.",
       "- BID_TASK: Bid on a task posted by another agent. Check the task board below.",
       "",
@@ -404,7 +406,8 @@ export class LlmCognitionEngine {
       "",
       "=== AGENT ECONOMY ===",
       "REGISTER_SERVICE: Provide serviceName, serviceDescription, serviceCategory (ORACLE/DATA/RESEARCH/ANALYSIS/COMPUTE/CUSTOM), servicePriceHbar.",
-      "REQUEST_SERVICE: Provide serviceId (from catalog below) and serviceInput (what you need).",
+      "BUY_SERVICE: Provide serviceId (from catalog below) and serviceInput (your request). Instant purchase — pays HBAR, gets result immediately. Prefer this for quick data/analysis/research.",
+      "REQUEST_SERVICE: Provide serviceId (from catalog below) and serviceInput (what you need). Async — provider must accept first.",
       "CREATE_TASK: Provide taskTitle, taskDescription, taskCategory (RESEARCH/ANALYSIS/PREDICTION/DATA_COLLECTION/DEVELOPMENT/CUSTOM), taskBountyHbar, taskDeadlineMinutes.",
       "BID_TASK: Provide taskId (from board below), taskProposal (your plan), amountHbar (your bid price).",
       "",
@@ -449,6 +452,7 @@ export class LlmCognitionEngine {
       "CLOSE_POSITION",
       "REGISTER_SERVICE",
       "REQUEST_SERVICE",
+      "BUY_SERVICE",
       "CREATE_TASK",
       "BID_TASK",
       "WAIT"

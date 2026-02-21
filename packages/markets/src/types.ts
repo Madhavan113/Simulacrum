@@ -14,6 +14,16 @@ export type MarketLiquidityModel =
   | "HIGH_LIQUIDITY"
   | "LOW_LIQUIDITY";
 
+/**
+ * Tracks the source of the current mark price for a market.
+ *
+ * LMSR_CURVE    — derived from LMSR curve state (authoritative for LOW_LIQUIDITY markets)
+ * CLOB_MID      — mid-price of best bid/ask on the order book
+ * CLOB_LAST_FILL — price of most recent order fill (fallback when no open spread)
+ * INITIAL       — initial odds from market creation (no trading has occurred)
+ */
+export type MarkPriceSource = "LMSR_CURVE" | "CLOB_MID" | "CLOB_LAST_FILL" | "INITIAL";
+
 export interface MarketCurveState {
   liquidityParameterHbar: number;
   sharesByOutcome: Record<string, number>;
@@ -74,6 +84,10 @@ export interface Market {
   challengeWindowEndsAt?: string;
   challenges?: MarketChallenge[];
   oracleVotes?: MarketOracleVote[];
+  initialFundingHbar?: number;
+  fundingTransactionId?: string;
+  fundingTransactionUrl?: string;
+  markPriceSource?: MarkPriceSource;
 }
 
 export interface CreateMarketInput {
@@ -87,6 +101,17 @@ export interface CreateMarketInput {
   lowLiquidity?: boolean;
   liquidityModel?: MarketLiquidityModel;
   curveLiquidityHbar?: number;
+  /** HBAR deposited to escrow at creation. Required — markets cannot exist without economic backing. */
+  initialFundingHbar: number;
+  /** Seed orders for CLOB markets. Required for HIGH_LIQUIDITY — must include at least one BID and one ASK. */
+  seedOrders?: SeedOrder[];
+}
+
+export interface SeedOrder {
+  outcome: string;
+  side: OrderSide;
+  quantity: number;
+  price: number;
 }
 
 export interface MarketBet {
@@ -217,6 +242,8 @@ export interface OrderBookSnapshot {
   orders: MarketOrder[];
   bids: MarketOrder[];
   asks: MarketOrder[];
+  /** Mid-price per outcome computed from the order book spread. Undefined when no spread exists. */
+  markPrice?: Record<string, number>;
 }
 
 export class MarketError extends Error {

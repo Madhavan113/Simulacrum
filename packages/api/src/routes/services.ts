@@ -12,6 +12,7 @@ import {
   updateService
 } from "@simulacrum/services";
 
+import { createHederaClient } from "@simulacrum/core";
 import type { ApiEventBus } from "../events.js";
 import type { ClawdbotNetwork } from "../clawdbots/network.js";
 import { validateBody } from "../middleware/validation.js";
@@ -66,7 +67,9 @@ const reviewServiceSchema = z.object({
 
 const buyServiceSchema = z.object({
   input: z.string().min(1),
-  payerAccountId: z.string().min(1)
+  payerAccountId: z.string().min(1),
+  privateKey: z.string().optional(),
+  privateKeyType: z.enum(["der", "ecdsa", "ed25519"]).optional()
 });
 
 export function createServicesRouter(eventBus: ApiEventBus, clawdbotNetwork?: ClawdbotNetwork): Router {
@@ -256,10 +259,22 @@ export function createServicesRouter(eventBus: ApiEventBus, clawdbotNetwork?: Cl
       }
 
       const requesterAccountId = request.body.payerAccountId;
+      const externalKey: string | undefined = request.body.privateKey;
 
-      const requesterClient = clawdbotNetwork.getHederaClientForAccount(requesterAccountId);
+      let requesterClient = clawdbotNetwork.getHederaClientForAccount(requesterAccountId);
+
+      if (!requesterClient && externalKey) {
+        const network = (process.env.HEDERA_NETWORK ?? "testnet") as "testnet" | "mainnet" | "previewnet";
+        requesterClient = createHederaClient({
+          network,
+          accountId: requesterAccountId,
+          privateKey: externalKey,
+          privateKeyType: request.body.privateKeyType ?? "der"
+        });
+      }
+
       if (!requesterClient) {
-        response.status(400).json({ error: `No wallet found for account ${requesterAccountId}. The buyer must be a registered agent or platform user with a custodial wallet.` });
+        response.status(400).json({ error: `No wallet found for account ${requesterAccountId}. Provide a privateKey to use an external Hedera wallet.` });
         return;
       }
 
