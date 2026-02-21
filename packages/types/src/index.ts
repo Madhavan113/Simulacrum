@@ -1,7 +1,7 @@
 // ── Market types ──
 
-export type MarketStatus = "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED";
-export type MarketLiquidityModel = "CLOB" | "WEIGHTED_CURVE";
+export type MarketStatus = "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED" | "SETTLED";
+export type MarketLiquidityModel = "CLOB" | "WEIGHTED_CURVE" | "HIGH_LIQUIDITY" | "LOW_LIQUIDITY";
 
 export interface MarketCurveState {
   liquidityParameterHbar: number;

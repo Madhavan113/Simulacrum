@@ -81,7 +81,7 @@ ethdenver/
 │   │
 │   ├── markets/                    # Prediction market logic
 │   │   └── src/
-│   │       ├── create.ts           # Market creation (CLOB or WEIGHTED_CURVE)
+│   │       ├── create.ts           # Market creation (HIGH_LIQUIDITY or LOW_LIQUIDITY)
 │   │       ├── bet.ts              # Place bets (LMSR curve pricing)
 │   │       ├── resolve.ts          # Resolution: direct, self-attest, challenge, oracle vote
 │   │       ├── claim.ts            # Claim winnings (proportional payout)
@@ -276,7 +276,7 @@ Shared TypeScript type definitions consumed by `ui` and other packages.
 |------|-------------|
 | `Market` | Market with outcomes, odds, resolution, challenges, oracle votes |
 | `MarketStatus` | `"OPEN" \| "CLOSED" \| "RESOLVED" \| "DISPUTED"` |
-| `MarketLiquidityModel` | `"CLOB" \| "WEIGHTED_CURVE"` |
+| `MarketLiquidityModel` | `"HIGH_LIQUIDITY" \| "LOW_LIQUIDITY"` (legacy: `"CLOB"` / `"WEIGHTED_CURVE"`) |
 | `MarketBet` | Bet record with HBAR amount and transaction ID |
 | `MarketOrder` | Order book entry (BID/ASK) |
 | `MarketResolution` | Resolution record |
@@ -409,8 +409,8 @@ Prediction market logic. Depends on `@simulacrum/core`.
 
 - Normalizes outcomes (defaults to `["YES", "NO"]`, uppercase, deduplicated)
 - Normalizes initial odds to sum to 100%
-- Selects liquidity model: `WEIGHTED_CURVE` if `lowLiquidity: true`, else `CLOB`
-- Initializes LMSR curve state for weighted curve markets (default liquidity: 25 HBAR)
+- Selects liquidity model: `LOW_LIQUIDITY` if `lowLiquidity: true`, else `HIGH_LIQUIDITY`
+- Initializes LMSR curve state for low-liquidity markets (default liquidity: 25 HBAR)
 - Creates Hedera topic via `@simulacrum/core`
 - Generates synthetic outcome token IDs: `"{topicId}:{outcome}"`
 - Publishes `MARKET_CREATED` message to topic
@@ -422,7 +422,7 @@ Prediction market logic. Depends on `@simulacrum/core`.
 
 - Validates market is OPEN, prevents creator/escrow from betting
 - Transfers HBAR from bettor to escrow
-- **WEIGHTED_CURVE** markets: LMSR (Logarithmic Market Scoring Rule) pricing
+- **LOW_LIQUIDITY** (curve) markets: LMSR (Logarithmic Market Scoring Rule) pricing
   - Cost function: `liquidity * logSumExp(shares / liquidity)`
   - Shares via binary search to match bet amount
   - Updates curve state and odds after bet
@@ -450,7 +450,7 @@ Ineligible voters: creator, self-attester, challengers.
 - Validates market is RESOLVED
 - Prevents duplicate claims via `claimIndex` Set
 - Payout: `(accountWinningStake * totalPool) / winningPool`
-- WEIGHTED_CURVE: proportional to curve shares
+- LOW_LIQUIDITY (curve): proportional to curve shares
 - Transfers HBAR from escrow to winner using bigint arithmetic (tinybars)
 
 #### `orderbook.ts` — Order Book
@@ -943,8 +943,8 @@ interface Market {
   outcomeTokenIds: Record<string, string>; // synthetic IDs: "{topicId}:{outcome}"
   initialOddsByOutcome: Record<string, number>;
   currentOddsByOutcome: Record<string, number>;
-  liquidityModel: "CLOB" | "WEIGHTED_CURVE";
-  curveState?: MarketCurveState;      // LMSR state for weighted curve
+  liquidityModel: "HIGH_LIQUIDITY" | "LOW_LIQUIDITY"; // legacy: "CLOB" | "WEIGHTED_CURVE"
+  curveState?: MarketCurveState;      // LMSR state for low-liquidity markets
 
   creatorAccountId: string;
   escrowAccountId?: string;
@@ -976,7 +976,7 @@ interface MarketBet {
   bettorAccountId: string;
   outcome: string;
   amountHbar: number;
-  curveSharesPurchased?: number;      // for WEIGHTED_CURVE
+  curveSharesPurchased?: number;      // for LOW_LIQUIDITY (curve) markets
   transactionId: string;
   transactionUrl: string;
   timestamp: string;

@@ -22,7 +22,7 @@ function seedDisputedMarket(): Market {
       attestedByAccountId: "0.0.1001",
       attestedAt: "2026-02-18T00:05:00.000Z"
     },
-    challengeWindowEndsAt: "2099-01-01T00:00:00.000Z",
+    challengeWindowEndsAt: "2026-02-18T00:05:30.000Z",
     challenges: [
       {
         id: "challenge-1",

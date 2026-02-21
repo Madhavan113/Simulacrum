@@ -38,6 +38,26 @@
       "createdAt": "2026-02-18T23:47:28.096Z",
       "updatedAt": "2026-02-18T23:47:28.120Z",
       "lastLoginAt": "2026-02-18T23:47:28.120Z"
+    },
+    "02e6b463-a9c4-479a-989e-3aa3d9913613": {
+      "id": "02e6b463-a9c4-479a-989e-3aa3d9913613",
+      "name": "spotter-sim",
+      "authPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAuO1SZCWL1KfW8kugzszNg0XPzf+6xf0kXITPP7X62Tk=\n-----END PUBLIC KEY-----",
+      "walletAccountId": "0.0.7993953",
+      "status": "ACTIVE",
+      "createdAt": "2026-02-20T21:40:17.730Z",
+      "updatedAt": "2026-02-20T21:42:44.895Z",
+      "lastLoginAt": "2026-02-20T21:42:44.895Z"
+    },
+    "d803c135-d900-4ae0-9adc-399caed2611a": {
+      "id": "d803c135-d900-4ae0-9adc-399caed2611a",
+      "name": "polyshark-bot",
+      "authPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAvbKeWzBR0BWY+drPN97/N5dGPNBDeirbEqDUBn9G/yw=\n-----END PUBLIC KEY-----",
+      "walletAccountId": "0.0.7993958",
+      "status": "ACTIVE",
+      "createdAt": "2026-02-20T21:40:47.664Z",
+      "updatedAt": "2026-02-20T21:44:04.390Z",
+      "lastLoginAt": "2026-02-20T21:44:04.390Z"
     }
   },
   "wallets": {
@@ -84,22 +104,45 @@
       },
       "createdAt": "2026-02-18T23:47:28.096Z",
       "updatedAt": "2026-02-18T23:47:28.096Z"
+    },
+    "02e6b463-a9c4-479a-989e-3aa3d9913613": {
+      "accountId": "0.0.7993953",
+      "privateKeyType": "der",
+      "privateKeyEncrypted": {
+        "iv": "GSlL1q8WoHJ4fgts",
+        "authTag": "O807/cXOvvPnohoymWa29g==",
+        "ciphertext": "/w2xmgk71VE1BqI7gAw5wpFtEyA3cI4K4jiFbK5xuvf6i2RMlOpB9WV6N46P8dkTcCgDwSS9Zv5ozXsQVdhCQSKKXpGmoSn2oAs/24PS8O0SFlQb4AQsBtqwRn2iqSEG"
+      },
+      "createdAt": "2026-02-20T21:40:17.731Z",
+      "updatedAt": "2026-02-20T21:40:17.731Z"
+    },
+    "d803c135-d900-4ae0-9adc-399caed2611a": {
+      "accountId": "0.0.7993958",
+      "privateKeyType": "der",
+      "privateKeyEncrypted": {
+        "iv": "Uig2ErMhdmY0S2vV",
+        "authTag": "HJPEDUUojv4QAxAVxdni3g==",
+        "ciphertext": "s5laH8Y8vjmf1GuKlELqCDj2gsjH6aGoq4PevU6VeSE0UzWJQ8R+O/g9adhxtktLF9MuwCOAjOzy0V011Mk0jQF9mRHBKbg8I/sA6mxI/aZxkAsIp04/gXCiYbpx2aBr"
+      },
+      "createdAt": "2026-02-20T21:40:47.664Z",
+      "updatedAt": "2026-02-20T21:40:47.664Z"
     }
   },
   "challenges": {
-    "ea78f4b5-d7e1-451c-8eda-c08c114822b6": {
-      "id": "ea78f4b5-d7e1-451c-8eda-c08c114822b6",
-      "agentId": "ba843077-6f37-4ba8-8f2a-1baa55bfd2da",
-      "nonce": "b07c8f9cae083cbfc3288d8c7cb24406",
-      "createdAt": "2026-02-18T23:47:28.115Z",
-      "expiresAt": "2026-02-18T23:52:28.115Z",
-      "usedAt": "2026-02-18T23:47:28.120Z"
+    "b5d1a3f4-bcb2-4819-9dd9-845b27861820": {
+      "id": "b5d1a3f4-bcb2-4819-9dd9-845b27861820",
+      "agentId": "d803c135-d900-4ae0-9adc-399caed2611a",
+      "nonce": "995a78633474bdaa29320d3b327f6553",
+      "createdAt": "2026-02-20T21:44:04.383Z",
+      "expiresAt": "2026-02-20T21:49:04.383Z",
+      "usedAt": "2026-02-20T21:44:04.390Z"
     }
   },
   "faucet": {
-    "totalDispensedHbar": 97.64640952,
+    "totalDispensedHbar": 137.64640952,
     "byDate": {
-      "2026-02-18": 97.64640952
+      "2026-02-18": 97.64640952,
+      "2026-02-20": 40
     },
     "byAgentId": {
       "16266573-9a1e-4738-86da-9e2136f759d5": {
@@ -118,6 +161,14 @@
         "totalDispensedHbar": 37.64640952,
         "refillCount": 1,
         "lastRefillAt": "2026-02-18T23:47:51.937Z"
+      },
+      "02e6b463-a9c4-479a-989e-3aa3d9913613": {
+        "totalDispensedHbar": 20,
+        "refillCount": 0
+      },
+      "d803c135-d900-4ae0-9adc-399caed2611a": {
+        "totalDispensedHbar": 20,
+        "refillCount": 0
       }
     }
   }

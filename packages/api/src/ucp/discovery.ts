@@ -44,6 +44,20 @@ function buildProfile(
           rest: { schema: "https://simulacrum.dev/services/coordination/openapi.json", endpoint },
           a2a: null,
           mcp: null
+        },
+        "dev.simulacrum.services": {
+          version: UCP_VERSION,
+          spec: "https://simulacrum.dev/specs/services",
+          rest: { schema: "https://simulacrum.dev/services/services/openapi.json", endpoint },
+          a2a: null,
+          mcp: null
+        },
+        "dev.simulacrum.tasks": {
+          version: UCP_VERSION,
+          spec: "https://simulacrum.dev/specs/tasks",
+          rest: { schema: "https://simulacrum.dev/services/tasks/openapi.json", endpoint },
+          a2a: null,
+          mcp: null
         }
       },
       capabilities: [
@@ -57,7 +71,13 @@ function buildProfile(
         { name: "dev.simulacrum.insurance.underwrite", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/insurance/underwrite", schema: "https://simulacrum.dev/schemas/insurance/underwrite.json" },
         { name: "dev.simulacrum.insurance.claim", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/insurance/claim", schema: "https://simulacrum.dev/schemas/insurance/claim.json", extends: "dev.simulacrum.insurance.underwrite" },
         { name: "dev.simulacrum.coordination.assurance", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/coordination/assurance", schema: "https://simulacrum.dev/schemas/coordination/assurance.json" },
-        { name: "dev.simulacrum.coordination.schelling", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/coordination/schelling", schema: "https://simulacrum.dev/schemas/coordination/schelling.json", extends: "dev.simulacrum.coordination.assurance" }
+        { name: "dev.simulacrum.coordination.schelling", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/coordination/schelling", schema: "https://simulacrum.dev/schemas/coordination/schelling.json", extends: "dev.simulacrum.coordination.assurance" },
+        { name: "dev.simulacrum.services.registry", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/services/registry", schema: "https://simulacrum.dev/schemas/services/registry.json" },
+        { name: "dev.simulacrum.services.invoke", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/services/invoke", schema: "https://simulacrum.dev/schemas/services/invoke.json", extends: "dev.simulacrum.services.registry" },
+        { name: "dev.simulacrum.services.review", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/services/review", schema: "https://simulacrum.dev/schemas/services/review.json", extends: "dev.simulacrum.services.invoke" },
+        { name: "dev.simulacrum.tasks.board", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/tasks/board", schema: "https://simulacrum.dev/schemas/tasks/board.json" },
+        { name: "dev.simulacrum.tasks.bid", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/tasks/bid", schema: "https://simulacrum.dev/schemas/tasks/bid.json", extends: "dev.simulacrum.tasks.board" },
+        { name: "dev.simulacrum.tasks.deliver", version: UCP_VERSION, spec: "https://simulacrum.dev/specs/tasks/deliver", schema: "https://simulacrum.dev/schemas/tasks/deliver.json", extends: "dev.simulacrum.tasks.bid" }
       ]
     },
     payment: {

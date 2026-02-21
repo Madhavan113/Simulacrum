@@ -1,7 +1,7 @@
 # Bugbot Index — Simulacrum Project
 
 **Role:** Bookkeeper and PR verification agent.  
-**Scope:** 9 packages across `ethdenver/packages/*` (types, core, markets, reputation, insurance, coordination, agents, api, ui).  
+**Scope:** 13 packages across `ethdenver/packages/*` (types, core, markets, derivatives, reputation, insurance, coordination, agents, api, services, tasks, sdk, ui).  
 **Goal:** Index the project against the documented spec and verify incoming changes are PR-approved.
 
 ---
@@ -27,6 +27,7 @@
 | **types** | `index.ts` (shared type definitions: Market, Agent, ClawDBot, Insurance, WsEvent) |
 | **core** | `client.ts`, `hedera-utils.ts`, `hts.ts`, `hcs.ts`, `transfers.ts`, `accounts.ts`, `persistence.ts`, `validation.ts`, `index.ts` |
 | **markets** | `create.ts`, `bet.ts`, `resolve.ts`, `claim.ts`, `orderbook.ts`, `store.ts`, `types.ts`, `index.ts` |
+| **derivatives** | `perpetual.ts`, `options.ts`, `funding.ts`, `liquidation.ts`, `pricing.ts`, `margin.ts`, `store.ts`, `types.ts`, `index.ts` |
 | **reputation** | `tokens.ts`, `attestation.ts`, `score.ts`, `graph.ts`, `store.ts`, `types.ts`, `index.ts` |
 | **insurance** | `underwrite.ts`, `claims.ts`, `premiums.ts`, `pools.ts`, `store.ts`, `types.ts`, `index.ts` |
 | **coordination** | `assurance.ts`, `commitment.ts`, `schelling.ts`, `store.ts`, `types.ts`, `index.ts` |

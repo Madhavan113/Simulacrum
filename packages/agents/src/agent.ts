@@ -9,7 +9,7 @@ export interface MarketSnapshot {
   question: string;
   creatorAccountId: string;
   outcomes: string[];
-  status: "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED";
+  status: "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED" | "SETTLED";
   closeTime: string;
 }
 

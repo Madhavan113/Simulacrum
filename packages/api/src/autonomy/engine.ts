@@ -727,13 +727,16 @@ export class AutonomyEngine {
           : (market.outcomes[0] ?? "YES");
 
       try {
-        const resolverClient = this.clientForAccount(market.creatorAccountId) ?? this.getOperatorClient();
+        const resolverAccountId = this.clientForAccount(market.creatorAccountId)
+          ? market.creatorAccountId
+          : this.#operatorAccountId;
+        const resolverClient = this.clientForAccount(resolverAccountId) ?? this.getOperatorClient();
 
         const resolution = await resolveMarket(
           {
             marketId: market.id,
             resolvedOutcome,
-            resolvedByAccountId: this.#operatorAccountId,
+            resolvedByAccountId: resolverAccountId,
             reason: "Autonomous resolution"
           },
           { client: resolverClient }
@@ -763,7 +766,7 @@ export class AutonomyEngine {
       const bets = store.bets.get(market.id) ?? [];
 
       if (bets.length === 0) {
-        market.status = "SETTLED" as Market["status"];
+        market.status = "SETTLED";
         persistMarketStore(store);
         continue;
       }
@@ -823,7 +826,7 @@ export class AutonomyEngine {
       }
 
       if (!permanentFailure) {
-        market.status = "SETTLED" as Market["status"];
+        market.status = "SETTLED";
         persistMarketStore(store);
       }
     }

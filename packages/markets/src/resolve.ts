@@ -91,7 +91,9 @@ export async function resolveMarket(
     );
   }
 
-  if (input.resolvedByAccountId !== market.creatorAccountId && market.status !== "DISPUTED") {
+  const isOracleFinalization =
+    market.status === "DISPUTED" && input.reason === "Peer oracle weighted vote finalization";
+  if (input.resolvedByAccountId !== market.creatorAccountId && !isOracleFinalization) {
     throw new MarketError(
       `Account ${input.resolvedByAccountId} is not authorized to resolve market ${input.marketId}.`
     );
@@ -322,6 +324,19 @@ export async function submitOracleVote(
     throw new MarketError(`Market ${input.marketId} is not in challenge/oracle resolution flow.`);
   }
 
+  const deps: ResolveMarketDependencies = {
+    submitMessage,
+    now: () => new Date(),
+    ...options.deps
+  };
+  const challengeWindowEndMs = Date.parse(market.challengeWindowEndsAt);
+  const nowMs = deps.now().getTime();
+  if (Number.isFinite(challengeWindowEndMs) && nowMs < challengeWindowEndMs) {
+    throw new MarketError(
+      `Challenge window for market ${input.marketId} is still open until ${market.challengeWindowEndsAt}. Oracle votes are only accepted after the window closes.`
+    );
+  }
+
   if (market.status === "RESOLVED") {
     throw new MarketError(`Market ${input.marketId} is already resolved.`);
   }
@@ -363,11 +378,6 @@ export async function submitOracleVote(
     );
   }
 
-  const deps: ResolveMarketDependencies = {
-    submitMessage,
-    now: () => new Date(),
-    ...options.deps
-  };
   const verifiedReputation = options.reputationLookup
     ? options.reputationLookup(voterAccountId)
     : input.reputationScore;

@@ -100,22 +100,36 @@ function normalizeInitialOddsByOutcome(
 }
 
 function resolveLiquidityModel(input: CreateMarketInput): MarketLiquidityModel {
-  if (input.liquidityModel === "WEIGHTED_CURVE") {
-    return "WEIGHTED_CURVE";
+  if (
+    input.liquidityModel === "WEIGHTED_CURVE" ||
+    input.liquidityModel === "LOW_LIQUIDITY"
+  ) {
+    return "LOW_LIQUIDITY";
   }
 
   if (input.lowLiquidity) {
-    return "WEIGHTED_CURVE";
+    return "LOW_LIQUIDITY";
   }
 
-  return "CLOB";
+  if (
+    input.liquidityModel === "CLOB" ||
+    input.liquidityModel === "HIGH_LIQUIDITY"
+  ) {
+    return "HIGH_LIQUIDITY";
+  }
+
+  return "HIGH_LIQUIDITY";
+}
+
+function isLowLiquidityModel(model: MarketLiquidityModel): boolean {
+  return model === "WEIGHTED_CURVE" || model === "LOW_LIQUIDITY";
 }
 
 function normalizeCurveLiquidityHbar(
   value: number | undefined,
   liquidityModel: MarketLiquidityModel
 ): number | undefined {
-  if (liquidityModel !== "WEIGHTED_CURVE") {
+  if (!isLowLiquidityModel(liquidityModel)) {
     return undefined;
   }
 
@@ -240,7 +254,7 @@ export async function createMarket(
   const curveLiquidityHbar = normalizeCurveLiquidityHbar(input.curveLiquidityHbar, liquidityModel);
   const currentOddsByOutcome = initialOddsByOutcome ?? fallbackOdds(outcomes);
   const curveState =
-    liquidityModel === "WEIGHTED_CURVE" && curveLiquidityHbar
+    isLowLiquidityModel(liquidityModel) && curveLiquidityHbar
       ? initializeCurveState(outcomes, currentOddsByOutcome, curveLiquidityHbar)
       : undefined;
   const store = getMarketStore(options.store);

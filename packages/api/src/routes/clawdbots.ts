@@ -97,7 +97,7 @@ const marketSchema = z.object({
   outcomes: z.array(z.string().min(1)).optional(),
   initialOddsByOutcome: z.record(z.number().positive()).optional(),
   lowLiquidity: z.boolean().optional(),
-  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE"]).optional(),
+  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE", "HIGH_LIQUIDITY", "LOW_LIQUIDITY"]).optional(),
   curveLiquidityHbar: z.number().positive().optional(),
   creatorBotId: z.string().optional(),
   closeMinutes: z.number().int().positive().optional()
@@ -108,7 +108,7 @@ const botMarketSchema = z.object({
   outcomes: z.array(z.string().min(1)).optional(),
   initialOddsByOutcome: z.record(z.number().positive()).optional(),
   lowLiquidity: z.boolean().optional(),
-  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE"]).optional(),
+  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE", "HIGH_LIQUIDITY", "LOW_LIQUIDITY"]).optional(),
   curveLiquidityHbar: z.number().positive().optional(),
   closeMinutes: z.number().int().positive().optional()
 });

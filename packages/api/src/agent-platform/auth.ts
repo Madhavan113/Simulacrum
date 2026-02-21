@@ -403,7 +403,7 @@ export class AgentAuthService {
     const claims = this.verifyAccessToken(currentToken);
     const now = this.#now();
     const remainingSeconds = claims.exp - Math.floor(now.getTime() / 1000);
-    if (remainingSeconds > this.#jwtTtlSeconds) {
+    if (remainingSeconds > Math.floor(this.#jwtTtlSeconds / 2)) {
       throw new AgentAuthError("Token is not yet eligible for refresh.");
     }
     const newClaims = this.createClaims(claims.sub, claims.walletAccountId, now);

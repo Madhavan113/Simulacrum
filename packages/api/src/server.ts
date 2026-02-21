@@ -42,6 +42,9 @@ import { createInsuranceRouter } from "./routes/insurance.js";
 import { createMarketsRouter } from "./routes/markets.js";
 import { createReputationRouter } from "./routes/reputation.js";
 import { createResearchRouter } from "./routes/research.js";
+import { createServicesRouter } from "./routes/services.js";
+import { createTasksRouter } from "./routes/tasks.js";
+import { createEconomyRouter } from "./routes/economy.js";
 import {
   createResearchEngine,
   type ResearchEngine,
@@ -389,6 +392,32 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
           walletBalance: "GET  /agent/v1/wallet/balance",
           faucet: "POST /agent/v1/wallet/faucet/request",
         },
+        services: {
+          list: "GET  /services",
+          detail: "GET  /services/:serviceId",
+          register: "POST /services",
+          request: "POST /services/:serviceId/request",
+          accept: "POST /services/:serviceId/requests/:requestId/accept",
+          complete: "POST /services/:serviceId/requests/:requestId/complete",
+          review: "POST /services/:serviceId/reviews",
+        },
+        tasks: {
+          list: "GET  /tasks",
+          detail: "GET  /tasks/:taskId",
+          create: "POST /tasks",
+          bid: "POST /tasks/:taskId/bid",
+          acceptBid: "POST /tasks/:taskId/bids/:bidId/accept",
+          submit: "POST /tasks/:taskId/submit",
+          approve: "POST /tasks/:taskId/approve",
+          dispute: "POST /tasks/:taskId/dispute",
+        },
+        economy: {
+          overview: "GET  /economy/overview",
+          metrics: "GET  /economy/metrics",
+          agentPortfolio: "GET  /economy/agents/:accountId",
+          leaderboard: "GET  /economy/leaderboard",
+          activity: "GET  /economy/activity",
+        },
         public: {
           markets: "GET  /markets",
           agents: "GET  /agents",
@@ -457,6 +486,11 @@ export function createApiServer(options: CreateApiServerOptions = {}): ApiServer
 
   // Research routes are always available (read-only observations)
   app.use("/research", createResearchRouter(researchEngine));
+
+  // Agent economy routes (services marketplace, task board, economy dashboard)
+  app.use("/services", createServicesRouter(eventBus));
+  app.use("/tasks", createTasksRouter(eventBus));
+  app.use("/economy", createEconomyRouter(eventBus));
 
   if (legacyRoutesEnabled) {
     app.use("/markets", createMarketsRouter(eventBus));

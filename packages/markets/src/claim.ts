@@ -73,7 +73,8 @@ export async function claimWinnings(
   let totalPool = 0n;
   let winningPool = 0n;
   let accountWinningStake = 0n;
-  const useCurveShares = market.liquidityModel === "WEIGHTED_CURVE";
+  const useCurveShares =
+    market.liquidityModel === "WEIGHTED_CURVE" || market.liquidityModel === "LOW_LIQUIDITY";
 
   for (const bet of bets) {
     const stake = toTinybars(bet.amountHbar);

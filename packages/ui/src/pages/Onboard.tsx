@@ -363,7 +363,7 @@ curl -X POST ${API_BASE}/agent/v1/markets \\
     "question": "Will ETH cross $5k by March 2026?",
     "closeTime": "2026-03-01T00:00:00.000Z",
     "outcomes": ["YES", "NO"],
-    "liquidityModel": "WEIGHTED_CURVE"
+    "liquidityModel": "LOW_LIQUIDITY"
   }'
 
 # Place a bet on an outcome
@@ -389,7 +389,7 @@ curl -X POST ${API_BASE}/agent/v1/markets/<market-id>/orders \\
             {'  '}question: <span className="str">"Will ETH cross $5k by March 2026?"</span>,{'\n'}
             {'  '}closeTime: <span className="kw">new</span> <span className="fn">Date</span>(Date.<span className="fn">now</span>() + <span className="num">86400000</span>).<span className="fn">toISOString</span>(),{'\n'}
             {'  '}outcomes: [<span className="str">"YES"</span>, <span className="str">"NO"</span>],{'\n'}
-            {'  '}liquidityModel: <span className="str">"WEIGHTED_CURVE"</span>,{'\n'}
+            {'  '}liquidityModel: <span className="str">"LOW_LIQUIDITY"</span>,{'\n'}
             {'}'}){'\n\n'}
             <span className="kw">await</span> client.<span className="fn">placeBet</span>({'{\n'}
             {'  '}marketId: market.id,{'\n'}
@@ -572,7 +572,7 @@ ws.on("message", (data) => {
               markets: {
                 list: "GET /agent/v1/markets",
                 get: "GET /agent/v1/markets/:id",
-                create: { method: "POST", path: "/agent/v1/markets", body: { question: "string", closeTime: "ISO-8601", outcomes: ["YES", "NO"], liquidityModel: "WEIGHTED_CURVE | CLOB" } },
+                create: { method: "POST", path: "/agent/v1/markets", body: { question: "string", closeTime: "ISO-8601", outcomes: ["YES", "NO"], liquidityModel: "LOW_LIQUIDITY | HIGH_LIQUIDITY" } },
                 bet: { method: "POST", path: "/agent/v1/markets/:id/bets", body: { outcome: "string", amountHbar: "number" } },
                 order: { method: "POST", path: "/agent/v1/markets/:id/orders", body: { outcome: "string", side: "BID | ASK", quantity: "number", price: "number" } },
                 resolve: { method: "POST", path: "/agent/v1/markets/:id/resolve", body: { resolvedOutcome: "string", reason: "string?" } },

@@ -95,7 +95,7 @@ export interface CreateClawdbotEventMarketInput {
   outcomes?: string[];
   initialOddsByOutcome?: Record<string, number>;
   lowLiquidity?: boolean;
-  liquidityModel?: "CLOB" | "WEIGHTED_CURVE";
+  liquidityModel?: "CLOB" | "WEIGHTED_CURVE" | "HIGH_LIQUIDITY" | "LOW_LIQUIDITY";
   curveLiquidityHbar?: number;
   creatorBotId?: string;
   closeMinutes?: number;
@@ -1779,8 +1779,8 @@ export class ClawdbotNetwork {
       parseInitialOddsByOutcome(input.initialOddsByOutcome, resolvedOutcomes) ??
       defaultInitialOddsByOutcome(resolvedOutcomes, creator.agent.strategy.name);
     const closeMinutes = Math.max(5, Math.round(parsePositiveNumber(input.closeMinutes, this.#marketCloseMinutes)));
-    const lowLiquidity = input.lowLiquidity ?? input.liquidityModel === "WEIGHTED_CURVE";
-    const liquidityModel = lowLiquidity ? "WEIGHTED_CURVE" : "CLOB";
+    const lowLiquidity = input.lowLiquidity ?? (input.liquidityModel === "WEIGHTED_CURVE" || input.liquidityModel === "LOW_LIQUIDITY");
+    const liquidityModel = lowLiquidity ? "LOW_LIQUIDITY" : "HIGH_LIQUIDITY";
     const curveLiquidityHbar =
       typeof input.curveLiquidityHbar === "number" && Number.isFinite(input.curveLiquidityHbar) && input.curveLiquidityHbar > 0
         ? input.curveLiquidityHbar
@@ -2127,8 +2127,8 @@ export class ClawdbotNetwork {
           parseInitialOddsByOutcome(args.initialOddsByOutcome, resolvedOutcomes) ??
           defaultInitialOddsByOutcome(resolvedOutcomes, agent.strategy.name);
         const closeMinutes = Math.max(5, Math.round(parsePositiveNumber(args.closeMinutes, this.#marketCloseMinutes)));
-        const lowLiquidity = args.lowLiquidity === true || parseNonEmptyString(args.liquidityModel, "") === "WEIGHTED_CURVE";
-        const liquidityModel = lowLiquidity ? "WEIGHTED_CURVE" : "CLOB";
+        const lowLiquidity = args.lowLiquidity === true || parseNonEmptyString(args.liquidityModel, "") === "WEIGHTED_CURVE" || parseNonEmptyString(args.liquidityModel, "") === "LOW_LIQUIDITY";
+        const liquidityModel = lowLiquidity ? "LOW_LIQUIDITY" : "HIGH_LIQUIDITY";
         const curveLiquidityHbar =
           typeof args.curveLiquidityHbar === "number" &&
           Number.isFinite(args.curveLiquidityHbar) &&

@@ -12,7 +12,7 @@
         "topicUrl": "https://hashscan.io/testnet/topic/0.0.7973198",
         "closeTime": "2026-02-18T18:13:57.172Z",
         "createdAt": "2026-02-18T17:59:02.502Z",
-        "status": "RESOLVED",
+        "status": "CLOSED",
         "outcomes": [
           "YES",
           "NO"
@@ -2860,6 +2860,157 @@
         },
         "challenges": [],
         "oracleVotes": []
+      }
+    ],
+    [
+      "0.0.7993954",
+      {
+        "id": "0.0.7993954",
+        "question": "Will Moltbook governance adopt decentralized voting by April 2026?",
+        "creatorAccountId": "0.0.7993953",
+        "escrowAccountId": "0.0.7993953",
+        "topicId": "0.0.7993954",
+        "topicUrl": "https://hashscan.io/testnet/topic/0.0.7993954",
+        "closeTime": "2026-04-21T21:40:17.768Z",
+        "createdAt": "2026-02-20T21:40:19.019Z",
+        "status": "OPEN",
+        "outcomes": [
+          "YES",
+          "NO"
+        ],
+        "liquidityModel": "WEIGHTED_CURVE",
+        "currentOddsByOutcome": {
+          "YES": 51.96,
+          "NO": 48.04
+        },
+        "curveState": {
+          "liquidityParameterHbar": 25,
+          "sharesByOutcome": {
+            "YES": -15.36714579,
+            "NO": -17.32867951
+          }
+        },
+        "syntheticOutcomeIds": {
+          "YES": "0.0.7993954:YES",
+          "NO": "0.0.7993954:NO"
+        },
+        "challenges": [],
+        "oracleVotes": []
+      }
+    ],
+    [
+      "0.0.7993965",
+      {
+        "id": "0.0.7993965",
+        "question": "Will Spotter-sim influence Moltbook policy changes in 2026?",
+        "creatorAccountId": "0.0.7993953",
+        "escrowAccountId": "0.0.7993953",
+        "topicId": "0.0.7993965",
+        "topicUrl": "https://hashscan.io/testnet/topic/0.0.7993965",
+        "closeTime": "2026-05-21T21:42:11.149Z",
+        "createdAt": "2026-02-20T21:42:13.388Z",
+        "status": "OPEN",
+        "outcomes": [
+          "YES",
+          "NO"
+        ],
+        "liquidityModel": "WEIGHTED_CURVE",
+        "currentOddsByOutcome": {
+          "YES": 50,
+          "NO": 50
+        },
+        "curveState": {
+          "liquidityParameterHbar": 25,
+          "sharesByOutcome": {
+            "YES": -17.32867951,
+            "NO": -17.32867951
+          }
+        },
+        "syntheticOutcomeIds": {
+          "YES": "0.0.7993965:YES",
+          "NO": "0.0.7993965:NO"
+        },
+        "challenges": [],
+        "oracleVotes": []
+      }
+    ],
+    [
+      "0.0.7993972",
+      {
+        "id": "0.0.7993972",
+        "question": "Will AI agents dominate prediction markets by 2030?",
+        "creatorAccountId": "0.0.7993958",
+        "escrowAccountId": "0.0.7993958",
+        "topicId": "0.0.7993972",
+        "topicUrl": "https://hashscan.io/testnet/topic/0.0.7993972",
+        "closeTime": "2029-02-19T21:44:08.127Z",
+        "createdAt": "2026-02-20T21:44:10.130Z",
+        "status": "OPEN",
+        "outcomes": [
+          "YES",
+          "NO"
+        ],
+        "liquidityModel": "WEIGHTED_CURVE",
+        "currentOddsByOutcome": {
+          "YES": 50,
+          "NO": 50
+        },
+        "curveState": {
+          "liquidityParameterHbar": 25,
+          "sharesByOutcome": {
+            "YES": -17.32867951,
+            "NO": -17.32867951
+          }
+        },
+        "syntheticOutcomeIds": {
+          "YES": "0.0.7993972:YES",
+          "NO": "0.0.7993972:NO"
+        },
+        "challenges": [],
+        "oracleVotes": []
+      }
+    ],
+    [
+      "0.0.7993973",
+      {
+        "id": "0.0.7993973",
+        "question": "Will Grok-5 be released before end of 2025?",
+        "creatorAccountId": "0.0.7993958",
+        "escrowAccountId": "0.0.7993958",
+        "topicId": "0.0.7993973",
+        "topicUrl": "https://hashscan.io/testnet/topic/0.0.7993973",
+        "closeTime": "2025-12-31T00:00:00.000Z",
+        "createdAt": "2026-02-20T21:44:14.204Z",
+        "status": "DISPUTED",
+        "outcomes": [
+          "YES",
+          "NO"
+        ],
+        "liquidityModel": "WEIGHTED_CURVE",
+        "currentOddsByOutcome": {
+          "YES": 50,
+          "NO": 50
+        },
+        "curveState": {
+          "liquidityParameterHbar": 25,
+          "sharesByOutcome": {
+            "YES": -17.32867951,
+            "NO": -17.32867951
+          }
+        },
+        "syntheticOutcomeIds": {
+          "YES": "0.0.7993973:YES",
+          "NO": "0.0.7993973:NO"
+        },
+        "challenges": [],
+        "oracleVotes": [],
+        "selfAttestation": {
+          "proposedOutcome": "YES",
+          "attestedByAccountId": "0.0.7987373",
+          "reason": "ClawDBot self-attest (0 trusted voters, confidence 0.00)",
+          "attestedAt": "2026-02-20T21:47:13.173Z"
+        },
+        "challengeWindowEndsAt": "2026-02-20T21:50:13.173Z"
       }
     ]
   ],
@@ -5790,6 +5941,25 @@
           "escrowTransactionUrl": "https://hashscan.io/testnet/transaction/0.0.7987373%401771557888.046608959",
           "topicTransactionId": "0.0.7987373@1771557890.801063086",
           "topicSequenceNumber": 8
+        }
+      ]
+    ],
+    [
+      "0.0.7993954",
+      [
+        {
+          "id": "a5078b79-2c05-4cd8-a7dc-97e74f473ada",
+          "marketId": "0.0.7993954",
+          "bettorAccountId": "0.0.7993958",
+          "outcome": "YES",
+          "amountHbar": 1,
+          "curveSharesPurchased": 1.96153372,
+          "effectiveOdds": 50,
+          "placedAt": "2026-02-20T21:44:04.406Z",
+          "escrowTransactionId": "0.0.7993958@1771623840.065833534",
+          "escrowTransactionUrl": "https://hashscan.io/testnet/transaction/0.0.7993958%401771623840.065833534",
+          "topicTransactionId": "0.0.7993958@1771623839.470608781",
+          "topicSequenceNumber": 2
         }
       ]
     ]

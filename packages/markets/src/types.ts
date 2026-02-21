@@ -1,5 +1,18 @@
-export type MarketStatus = "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED";
-export type MarketLiquidityModel = "CLOB" | "WEIGHTED_CURVE";
+export type MarketStatus = "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED" | "SETTLED";
+/**
+ * Liquidity regime for a market.
+ *
+ * Preferred aliases (describe the regime, not the mechanism):
+ *   HIGH_LIQUIDITY → CLOB order-book matching
+ *   LOW_LIQUIDITY  → LMSR automated market maker
+ *
+ * Legacy names CLOB / WEIGHTED_CURVE are kept for backward compatibility.
+ */
+export type MarketLiquidityModel =
+  | "CLOB"
+  | "WEIGHTED_CURVE"
+  | "HIGH_LIQUIDITY"
+  | "LOW_LIQUIDITY";
 
 export interface MarketCurveState {
   liquidityParameterHbar: number;

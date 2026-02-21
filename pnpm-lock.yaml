@@ -54,6 +54,12 @@ importers:
       '@simulacrum/research':
         specifier: workspace:*
         version: link:../research
+      '@simulacrum/services':
+        specifier: workspace:*
+        version: link:../services
+      '@simulacrum/tasks':
+        specifier: workspace:*
+        version: link:../tasks
       express:
         specifier: ^4.21.2
         version: 4.22.1
@@ -98,6 +104,22 @@ importers:
       '@hashgraph/sdk':
         specifier: ^2.51.0
         version: 2.80.0(bn.js@5.2.2)(react-native@0.84.0(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.4))
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.11
+
+  packages/derivatives:
+    dependencies:
+      '@hashgraph/sdk':
+        specifier: ^2.51.0
+        version: 2.80.0(bn.js@5.2.2)(react-native@0.84.0(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.4))
+      '@simulacrum/core':
+        specifier: workspace:*
+        version: link:../core
+      '@simulacrum/markets':
+        specifier: workspace:*
+        version: link:../markets
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
@@ -156,6 +178,32 @@ importers:
         version: 22.19.11
 
   packages/sdk:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.11
+
+  packages/services:
+    dependencies:
+      '@hashgraph/sdk':
+        specifier: ^2.51.0
+        version: 2.80.0(bn.js@5.2.2)(react-native@0.84.0(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.4))
+      '@simulacrum/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.11
+
+  packages/tasks:
+    dependencies:
+      '@hashgraph/sdk':
+        specifier: ^2.51.0
+        version: 2.80.0(bn.js@5.2.2)(react-native@0.84.0(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.4))
+      '@simulacrum/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

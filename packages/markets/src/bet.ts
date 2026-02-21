@@ -161,7 +161,7 @@ function toOddsPercentages(
 function ensureCurveState(market: Market): CurveStateSnapshot {
   if (!market.curveState?.sharesByOutcome) {
     throw new MarketError(
-      `Market ${market.id} is configured as WEIGHTED_CURVE but has no curve state. ` +
+      `Market ${market.id} is configured as a low-liquidity (curve) market but has no curve state. ` +
       `This indicates data corruption — the curve state should have been set during market creation.`
     );
   }
@@ -347,10 +347,12 @@ export async function placeBet(
       );
     }
 
-    const curveTrade =
-      market.liquidityModel === "WEIGHTED_CURVE"
-        ? quoteCurveTrade(market, normalizedOutcome, input.amountHbar)
-        : undefined;
+    const isLowLiquidity =
+      market.liquidityModel === "WEIGHTED_CURVE" || market.liquidityModel === "LOW_LIQUIDITY";
+
+    const curveTrade = isLowLiquidity
+      ? quoteCurveTrade(market, normalizedOutcome, input.amountHbar)
+      : undefined;
 
     if (
       curveTrade &&

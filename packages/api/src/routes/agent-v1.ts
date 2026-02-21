@@ -56,7 +56,7 @@ const createMarketSchema = z.object({
   outcomes: z.array(z.string().min(1)).optional(),
   initialOddsByOutcome: z.record(z.number().positive()).optional(),
   lowLiquidity: z.boolean().optional(),
-  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE"]).optional(),
+  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE", "HIGH_LIQUIDITY", "LOW_LIQUIDITY"]).optional(),
   curveLiquidityHbar: z.number().positive().optional()
 });
 

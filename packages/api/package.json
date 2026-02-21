@@ -29,6 +29,8 @@
     "@simulacrum/markets": "workspace:*",
     "@simulacrum/reputation": "workspace:*",
     "@simulacrum/research": "workspace:*",
+    "@simulacrum/services": "workspace:*",
+    "@simulacrum/tasks": "workspace:*",
     "express": "^4.21.2",
     "ws": "^8.18.0",
     "zod": "^3.24.1"

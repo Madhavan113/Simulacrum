@@ -38,7 +38,7 @@ describe("weighted curve markets", () => {
       }
     );
 
-    expect(created.market.liquidityModel).toBe("WEIGHTED_CURVE");
+    expect(created.market.liquidityModel).toBe("LOW_LIQUIDITY");
     expect(created.market.curveState).toBeDefined();
     const beforeOdds = created.market.currentOddsByOutcome?.YES ?? 0;
 

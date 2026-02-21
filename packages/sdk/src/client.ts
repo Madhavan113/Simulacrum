@@ -162,7 +162,7 @@ export interface Market {
   createdAt: string;
   status: "OPEN" | "CLOSED" | "RESOLVED" | "DISPUTED";
   outcomes: string[];
-  liquidityModel?: "CLOB" | "WEIGHTED_CURVE";
+  liquidityModel?: "CLOB" | "WEIGHTED_CURVE" | "HIGH_LIQUIDITY" | "LOW_LIQUIDITY";
   initialOddsByOutcome?: Record<string, number>;
   currentOddsByOutcome?: Record<string, number>;
 }
@@ -174,7 +174,7 @@ export interface CreateMarketInput {
   outcomes?: string[];
   initialOddsByOutcome?: Record<string, number>;
   lowLiquidity?: boolean;
-  liquidityModel?: "CLOB" | "WEIGHTED_CURVE";
+  liquidityModel?: "CLOB" | "WEIGHTED_CURVE" | "HIGH_LIQUIDITY" | "LOW_LIQUIDITY";
   curveLiquidityHbar?: number;
 }
 

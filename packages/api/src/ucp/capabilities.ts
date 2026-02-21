@@ -19,6 +19,22 @@ import {
   submitAttestation,
   buildTrustGraph
 } from "@simulacrum/reputation";
+import {
+  getServiceStore,
+  registerService,
+  requestService,
+  acceptRequest,
+  completeRequest,
+  reviewService
+} from "@simulacrum/services";
+import {
+  getTaskStore,
+  createTask,
+  bidOnTask,
+  acceptBid,
+  submitWork,
+  approveWork
+} from "@simulacrum/tasks";
 
 import type { ApiEventBus } from "../events.js";
 import { validateBody } from "../middleware/validation.js";
@@ -82,7 +98,7 @@ const createMarketSchema = z.object({
   closeTime: z.string().min(1),
   outcomes: z.array(z.string().min(1)).optional(),
   initialOddsByOutcome: z.record(z.number().positive()).optional(),
-  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE"]).optional(),
+  liquidityModel: z.enum(["CLOB", "WEIGHTED_CURVE", "HIGH_LIQUIDITY", "LOW_LIQUIDITY"]).optional(),
   curveLiquidityHbar: z.number().positive().optional()
 });
 
@@ -629,6 +645,238 @@ export function createUcpCapabilityRouter(
         CAP_REP, "get_score", "SCORE_ERROR",
         (error as Error).message, 400
       );
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  // ── Services: registry capability ──
+
+  const CAP_SVC = "dev.simulacrum.services.registry";
+  const CAP_SVC_INV = "dev.simulacrum.services.invoke";
+  const CAP_SVC_REV = "dev.simulacrum.services.review";
+
+  const ucpRegisterServiceSchema = z.object({
+    providerAccountId: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().min(1),
+    category: z.enum(["COMPUTE", "DATA", "RESEARCH", "ANALYSIS", "ORACLE", "CUSTOM"]),
+    priceHbar: z.number().positive(),
+    tags: z.array(z.string()).optional()
+  });
+
+  const ucpRequestServiceSchema = z.object({
+    requesterAccountId: z.string().min(1),
+    input: z.string().min(1)
+  });
+
+  const ucpAcceptRequestSchema = z.object({
+    providerAccountId: z.string().min(1)
+  });
+
+  const ucpCompleteRequestSchema = z.object({
+    providerAccountId: z.string().min(1),
+    output: z.string().min(1)
+  });
+
+  const ucpReviewServiceSchema = z.object({
+    serviceRequestId: z.string().min(1),
+    reviewerAccountId: z.string().min(1),
+    rating: z.number().int().min(1).max(5),
+    comment: z.string().min(1)
+  });
+
+  router.get("/services", (_request, response) => {
+    const store = getServiceStore();
+    const services = Array.from(store.services.values());
+    response.json(ucpResponse(CAP_SVC, "list_services", { services }));
+  });
+
+  router.get("/services/:serviceId", (request, response) => {
+    const store = getServiceStore();
+    const service = store.services.get(request.params.serviceId);
+    if (!service) {
+      const err = ucpError(CAP_SVC, "get_service", "NOT_FOUND", `Service ${request.params.serviceId} not found`, 404);
+      response.status(err.status).json(err.body);
+      return;
+    }
+    const reviews = store.reviews.get(request.params.serviceId) ?? [];
+    response.json(ucpResponse(CAP_SVC, "get_service", { service, reviews }));
+  });
+
+  router.post("/services", validateBody(ucpRegisterServiceSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const result = await registerService(request.body);
+      options.eventBus.publish("service.registered", { ...result.service, source: "ucp" });
+      response.status(201).json(ucpResponse(CAP_SVC, "register_service", result, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_SVC, "register_service", "REGISTER_FAILED", (error as Error).message, 400, idempotencyKey);
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  router.post("/services/:serviceId/request", validateBody(ucpRequestServiceSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const serviceRequest = await requestService({ serviceId: request.params.serviceId, ...request.body });
+      options.eventBus.publish("service.requested", { ...serviceRequest, source: "ucp" });
+      response.status(201).json(ucpResponse(CAP_SVC_INV, "request_service", serviceRequest, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_SVC_INV, "request_service", "REQUEST_FAILED", (error as Error).message, 400, idempotencyKey);
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  router.post("/services/:serviceId/requests/:requestId/accept", validateBody(ucpAcceptRequestSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const serviceRequest = await acceptRequest({ serviceId: request.params.serviceId, requestId: request.params.requestId, ...request.body });
+      options.eventBus.publish("service.accepted", { ...serviceRequest, source: "ucp" });
+      response.json(ucpResponse(CAP_SVC_INV, "accept_request", serviceRequest, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_SVC_INV, "accept_request", "ACCEPT_FAILED", (error as Error).message, 400, idempotencyKey);
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  router.post("/services/:serviceId/requests/:requestId/complete", validateBody(ucpCompleteRequestSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const serviceRequest = await completeRequest({ serviceId: request.params.serviceId, requestId: request.params.requestId, ...request.body });
+      options.eventBus.publish("service.completed", { ...serviceRequest, source: "ucp" });
+      response.json(ucpResponse(CAP_SVC_INV, "complete_request", serviceRequest, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_SVC_INV, "complete_request", "COMPLETE_FAILED", (error as Error).message, 400, idempotencyKey);
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  router.post("/services/:serviceId/reviews", validateBody(ucpReviewServiceSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const review = await reviewService({ serviceId: request.params.serviceId, ...request.body });
+      options.eventBus.publish("service.reviewed", { ...review, source: "ucp" });
+      response.status(201).json(ucpResponse(CAP_SVC_REV, "review_service", review, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_SVC_REV, "review_service", "REVIEW_FAILED", (error as Error).message, 400, idempotencyKey);
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  // ── Tasks: board capability ──
+
+  const CAP_TASK = "dev.simulacrum.tasks.board";
+  const CAP_TASK_BID = "dev.simulacrum.tasks.bid";
+  const CAP_TASK_DEL = "dev.simulacrum.tasks.deliver";
+
+  const ucpCreateTaskSchema = z.object({
+    posterAccountId: z.string().min(1),
+    title: z.string().min(1),
+    description: z.string().min(1),
+    category: z.enum(["RESEARCH", "PREDICTION", "DATA_COLLECTION", "ANALYSIS", "DEVELOPMENT", "CUSTOM"]),
+    bountyHbar: z.number().positive(),
+    deadline: z.string().min(1),
+    requiredReputation: z.number().min(0).optional(),
+    maxBids: z.number().int().positive().optional()
+  });
+
+  const ucpBidSchema = z.object({
+    bidderAccountId: z.string().min(1),
+    proposedPriceHbar: z.number().positive(),
+    estimatedCompletion: z.string().min(1),
+    proposal: z.string().min(1)
+  });
+
+  const ucpAcceptBidSchema = z.object({
+    posterAccountId: z.string().min(1)
+  });
+
+  const ucpSubmitWorkSchema = z.object({
+    submitterAccountId: z.string().min(1),
+    deliverable: z.string().min(1)
+  });
+
+  const ucpApproveWorkSchema = z.object({
+    posterAccountId: z.string().min(1)
+  });
+
+  router.get("/tasks", (request, response) => {
+    const store = getTaskStore();
+    let tasks = Array.from(store.tasks.values());
+    const status = request.query.status as string | undefined;
+    if (status) tasks = tasks.filter((t) => t.status === status);
+    response.json(ucpResponse(CAP_TASK, "list_tasks", { tasks }));
+  });
+
+  router.get("/tasks/:taskId", (request, response) => {
+    const store = getTaskStore();
+    const task = store.tasks.get(request.params.taskId);
+    if (!task) {
+      const err = ucpError(CAP_TASK, "get_task", "NOT_FOUND", `Task ${request.params.taskId} not found`, 404);
+      response.status(err.status).json(err.body);
+      return;
+    }
+    const bids = store.bids.get(request.params.taskId) ?? [];
+    const submissions = store.submissions.get(request.params.taskId) ?? [];
+    response.json(ucpResponse(CAP_TASK, "get_task", { task, bids, submissions }));
+  });
+
+  router.post("/tasks", validateBody(ucpCreateTaskSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const result = await createTask(request.body);
+      options.eventBus.publish("task.created", { ...result.task, source: "ucp" });
+      response.status(201).json(ucpResponse(CAP_TASK, "create_task", result, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_TASK, "create_task", "CREATE_FAILED", (error as Error).message, 400, idempotencyKey);
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  router.post("/tasks/:taskId/bid", validateBody(ucpBidSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const bid = await bidOnTask({ taskId: request.params.taskId, ...request.body });
+      options.eventBus.publish("task.bid", { ...bid, source: "ucp" });
+      response.status(201).json(ucpResponse(CAP_TASK_BID, "bid_on_task", bid, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_TASK_BID, "bid_on_task", "BID_FAILED", (error as Error).message, 400, idempotencyKey);
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  router.post("/tasks/:taskId/bids/:bidId/accept", validateBody(ucpAcceptBidSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const result = await acceptBid({ taskId: request.params.taskId, bidId: request.params.bidId, ...request.body });
+      options.eventBus.publish("task.assigned", { ...result, source: "ucp" });
+      response.json(ucpResponse(CAP_TASK_BID, "accept_bid", result, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_TASK_BID, "accept_bid", "ACCEPT_FAILED", (error as Error).message, 400, idempotencyKey);
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  router.post("/tasks/:taskId/submit", validateBody(ucpSubmitWorkSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const submission = await submitWork({ taskId: request.params.taskId, ...request.body });
+      options.eventBus.publish("task.submitted", { ...submission, source: "ucp" });
+      response.status(201).json(ucpResponse(CAP_TASK_DEL, "submit_work", submission, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_TASK_DEL, "submit_work", "SUBMIT_FAILED", (error as Error).message, 400, idempotencyKey);
+      response.status(err.status).json(err.body);
+    }
+  });
+
+  router.post("/tasks/:taskId/approve", validateBody(ucpApproveWorkSchema), async (request, response) => {
+    const idempotencyKey = request.get("x-idempotency-key");
+    try {
+      const task = await approveWork({ taskId: request.params.taskId, ...request.body });
+      options.eventBus.publish("task.completed", { ...task, source: "ucp" });
+      response.json(ucpResponse(CAP_TASK_DEL, "approve_work", task, idempotencyKey));
+    } catch (error) {
+      const err = ucpError(CAP_TASK_DEL, "approve_work", "APPROVE_FAILED", (error as Error).message, 400, idempotencyKey);
       response.status(err.status).json(err.body);
     }
   });
