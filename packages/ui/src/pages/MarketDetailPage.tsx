@@ -1,5 +1,4 @@
 import { useParams } from 'react-router-dom'
-import { PageHeader } from '../components/layout/PageHeader'
 import { MarketDetail } from './MarketDetail'
 
 export function MarketDetailPage() {
@@ -13,12 +12,5 @@ export function MarketDetailPage() {
     )
   }
 
-  return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      <PageHeader title="Market Detail" />
-      <div className="flex-1 overflow-y-auto">
-        <MarketDetail marketId={marketId} />
-      </div>
-    </div>
-  )
+  return <MarketDetail marketId={marketId} />
 }
